@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cors from "cors";
 import fs from "fs";
-import fetch from "node-fetch";
+// Use global fetch available in Node 18+
 
 dotenv.config();
 
@@ -43,21 +43,28 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, "../")));
 
-// Simple API auth (optional): allow all for now; add bearer check here if needed
+// Simple Bearer token middleware for write operations
+const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN || "";
+function requireAdmin(req, res, next) {
+  if (!ADMIN_API_TOKEN) return next(); // if not set, allow all (for quick prod testing)
+  const auth = req.headers.authorization || "";
+  if (auth.startsWith("Bearer ") && auth.slice(7) === ADMIN_API_TOKEN) return next();
+  return res.status(401).json({ error: "Unauthorized" });
+}
 
 // Members CRUD
 app.get("/api/members", (req, res) => {
   const data = readJson(MEMBERS_FILE);
   res.json(data);
 });
-app.post("/api/members", (req, res) => {
+app.post("/api/members", requireAdmin, (req, res) => {
   const data = readJson(MEMBERS_FILE);
   const item = { id: String(Date.now()), ...req.body };
   data.unshift(item);
   writeJson(MEMBERS_FILE, data);
   res.status(201).json(item);
 });
-app.put("/api/members/:id", (req, res) => {
+app.put("/api/members/:id", requireAdmin, (req, res) => {
   const data = readJson(MEMBERS_FILE);
   const idx = data.findIndex(m => m.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "Not found" });
@@ -65,7 +72,7 @@ app.put("/api/members/:id", (req, res) => {
   writeJson(MEMBERS_FILE, data);
   res.json(data[idx]);
 });
-app.delete("/api/members/:id", (req, res) => {
+app.delete("/api/members/:id", requireAdmin, (req, res) => {
   const data = readJson(MEMBERS_FILE);
   const next = data.filter(m => m.id !== req.params.id);
   writeJson(MEMBERS_FILE, next);
@@ -77,14 +84,14 @@ app.get("/api/news", (req, res) => {
   const data = readJson(NEWS_FILE);
   res.json(data);
 });
-app.post("/api/news", (req, res) => {
+app.post("/api/news", requireAdmin, (req, res) => {
   const data = readJson(NEWS_FILE);
   const item = { id: Date.now(), ...req.body };
   data.unshift(item);
   writeJson(NEWS_FILE, data);
   res.status(201).json(item);
 });
-app.put("/api/news/:id", (req, res) => {
+app.put("/api/news/:id", requireAdmin, (req, res) => {
   const data = readJson(NEWS_FILE);
   const id = Number(req.params.id);
   const idx = data.findIndex(n => n.id === id);
@@ -93,7 +100,7 @@ app.put("/api/news/:id", (req, res) => {
   writeJson(NEWS_FILE, data);
   res.json(data[idx]);
 });
-app.delete("/api/news/:id", (req, res) => {
+app.delete("/api/news/:id", requireAdmin, (req, res) => {
   const data = readJson(NEWS_FILE);
   const id = Number(req.params.id);
   const next = data.filter(n => n.id !== id);
@@ -103,7 +110,7 @@ app.delete("/api/news/:id", (req, res) => {
 
 // PUBG proxy endpoints
 const PUBG_API_KEY = process.env.PUBG_API_KEY || process.env.PUBG_TOKEN;
-const PUBG_REGION = process.env.PUBG_REGION || "steam";
+const PUBG_REGION = process.env.PUBG_REGION || process.env.PUBG_PLATFORM || "steam";
 const PUBG_BASE = `https://api.pubg.com/shards/${PUBG_REGION}`;
 
 async function pubgFetch(pathname) {
@@ -154,6 +161,72 @@ app.get("/api/pubg/stats/:playerId", async (req, res) => {
     };
     res.json({ season: seasonId, overall, modes: s });
   } catch (e) { res.status(500).json({ error: "PUBG stats failed" }); }
+});
+
+// YouTube helper: extract videoId from url and fetch metadata via Data API v3
+app.get('/api/youtube/oembed', async (req, res) => {
+  try {
+    const key = process.env.YOUTUBE_API_KEY;
+    const url = req.query.url || '';
+    if (!key) return res.status(500).json({ error: 'YOUTUBE_API_KEY missing' });
+    const idMatch = /(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{6,})/.exec(url);
+    const videoId = idMatch && idMatch[1];
+    if (!videoId) return res.status(400).json({ error: 'Invalid YouTube URL' });
+    const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${key}`);
+    const data = await ytRes.json();
+    const item = data.items && data.items[0];
+    if (!item) return res.status(404).json({ error: 'Video not found' });
+    const sn = item.snippet;
+    const thumb = sn.thumbnails && (sn.thumbnails.maxres || sn.thumbnails.high || sn.thumbnails.medium || sn.thumbnails.default);
+    res.json({
+      title: sn.title,
+      author_name: sn.channelTitle,
+      thumbnail_url: thumb && thumb.url,
+      url,
+      provider: 'youtube'
+    });
+  } catch (e) { res.status(500).json({ error: 'YouTube fetch failed' }); }
+});
+
+// Twitch helper: get app access token, then basic metadata for a channel or video
+async function twitchToken() {
+  const id = process.env.TWITCH_CLIENT_ID;
+  const secret = process.env.TWITCH_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  const resp = await fetch(`https://id.twitch.tv/oauth2/token?client_id=${id}&client_secret=${secret}&grant_type=client_credentials`, { method: 'POST' });
+  const json = await resp.json();
+  return json.access_token ? { token: json.access_token, clientId: id } : null;
+}
+app.get('/api/twitch/oembed', async (req, res) => {
+  try {
+    const url = req.query.url || '';
+    const auth = await twitchToken();
+    if (!auth) return res.status(500).json({ error: 'Twitch credentials missing' });
+    // Detect video vs channel
+    const videoMatch = /twitch\.tv\/videos\/(\d+)/.exec(url);
+    const channelMatch = /twitch\.tv\/([A-Za-z0-9_]+)/.exec(url);
+    let meta = null;
+    if (videoMatch) {
+      const vId = videoMatch[1];
+      const r = await fetch(`https://api.twitch.tv/helix/videos?id=${vId}`, { headers: { 'Client-ID': auth.clientId, 'Authorization': `Bearer ${auth.token}` }});
+      const j = await r.json();
+      const it = j.data && j.data[0];
+      if (it) meta = { title: it.title, author_name: it.user_name, thumbnail_url: it.thumbnail_url && it.thumbnail_url.replace(/%\{width\}|\{width\}/g,'1280').replace(/%\{height\}|\{height\}/g,'720') };
+    } else if (channelMatch) {
+      const login = channelMatch[1];
+      const r = await fetch(`https://api.twitch.tv/helix/users?login=${login}`, { headers: { 'Client-ID': auth.clientId, 'Authorization': `Bearer ${auth.token}` }});
+      const j = await r.json();
+      const it = j.data && j.data[0];
+      if (it) meta = { title: it.display_name, author_name: it.display_name, thumbnail_url: it.profile_image_url };
+    }
+    if (!meta) return res.status(400).json({ error: 'Unsupported Twitch URL' });
+    res.json({ ...meta, url, provider: 'twitch' });
+  } catch (e) { res.status(500).json({ error: 'Twitch fetch failed' }); }
+});
+
+// Discord placeholder
+app.get('/api/discord/resolve', async (req, res) => {
+  res.status(501).json({ error: 'Not implemented' });
 });
 
 app.get("/api/status", (req, res) => {
