@@ -7,7 +7,7 @@ const ENV = {
   apiBase: ''
 };
 
-// Persistent data stores (localStorage for now)
+// Persistent data stores (public site)
 let newsItems = [];
 let members = [];
 let adminBearer = '';
@@ -616,13 +616,21 @@ window.addEventListener('DOMContentLoaded', () => {
   initBurger();
   initViewMore();
   initSorting();
-  initAdmin();
-  initMemberActions();
-  initPostActions();
+  // Public homepage should not initialize admin handlers
   initThemeActions();
-  initApiConfig();
   initSocialLinks();
   applyTheme();
-  applyTheme();
-  loadAllAndRender().then(() => refreshLiveStats());
+  // Load data for public display
+  (async () => {
+    try {
+      const [newsRes, membersRes] = await Promise.all([
+        fetch('/api/news'), fetch('/api/members')
+      ]);
+      newsItems = await newsRes.json();
+      members = await membersRes.json();
+      renderNews();
+      renderRoster();
+      renderLeaderboard();
+    } catch (e) { console.warn('Public data load failed', e); }
+  })();
 });

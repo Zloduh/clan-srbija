@@ -272,6 +272,10 @@ app.get("/api/status", (req, res) => {
   res.json({ message: "SRBIJA Clan server is online 🔥" });
 });
 
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, '../admin.html'));
+});
+
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../index.html"));
 });
