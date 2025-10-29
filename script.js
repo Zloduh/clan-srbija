@@ -4,7 +4,10 @@
 // Environment-aware defaults
 const ENV = {
   mode: (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'development' : 'production',
-  apiBase: ''
+  apiBase:
+    (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? 'http://localhost:3000'
+      : 'https://clan-srbija.onrender.com'
 };
 
 // Persistent data stores (public site)
@@ -19,7 +22,7 @@ const state = {
     youtube: '#',
     twitch: '#',
   },
-    visibleStats: { matches: true, wins: true, kd: true, rank: true, damage: true },
+  visibleStats: { matches: true, wins: true, kd: true, rank: true, damage: true },
   theme: {
     primary: '#c1121f', secondary: '#0033a0', accent: '#ffffff', bg: '#0b0d12',
     logo: 'assets/logo-placeholder.png',
@@ -42,7 +45,6 @@ function enableSmoothScroll() {
       if (!target) return;
       e.preventDefault();
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // close mobile menu
       $('#mobileMenu').hidden = true;
     });
   });
@@ -151,11 +153,10 @@ function renderRoster() {
     });
     grid.appendChild(card);
   });
-  // apply stat visibility
   applyStatVisibility();
 }
 
-// Render leaderboard with sorting and search
+// Render leaderboard
 let sortState = { key: 'wins', dir: 'desc' };
 function renderLeaderboard() {
   const tbody = $('#leaderboard tbody');
@@ -193,70 +194,7 @@ function initSorting() {
   $('#playerSearch').addEventListener('input', renderLeaderboard);
 }
 
-// Admin features are moved to /admin (admin.js). No admin UI on public page.
-function initAdmin() {}
-function initAdminTabs() {}
-function paintAdminData() {}
-function initMemberActions() {}
-function openMemberModal() {}
-
-// No live refetch on public page
-function refetchMemberStats() {}
-
-function initPostActions() {}
-
 // Theme apply
-function persistState() {
-  // no-op for now
-}
-async function loadAllAndRender() {
-  const [newsRes, membersRes] = await Promise.all([
-    fetch('/api/news'), fetch('/api/members')
-  ]);
-  newsItems = await newsRes.json();
-  members = await membersRes.json();
-  renderNews();
-  renderRoster();
-  renderLeaderboard();
-  applyStatVisibility();
-}
-function loadState() {
-  // no local storage load
-}
-
-function initThemeActions() {
-  const applyBtn = document.getElementById('applyTheme');
-  const colorPrimary = document.getElementById('colorPrimary');
-  const colorSecondary = document.getElementById('colorSecondary');
-  const colorAccent = document.getElementById('colorAccent');
-  const colorBg = document.getElementById('colorBg');
-  const logoUrl = document.getElementById('logoUrl');
-  const bgUrl = document.getElementById('bgUrl');
-  if (applyBtn && colorPrimary && colorSecondary && colorAccent && colorBg && logoUrl && bgUrl) {
-    applyBtn.addEventListener('click', () => {
-      const primary = colorPrimary.value;
-      const secondary = colorSecondary.value;
-      const accent = colorAccent.value;
-      const bg = colorBg.value;
-      const logo = logoUrl.value.trim();
-      const bgImg = bgUrl.value.trim();
-      state.theme = { ...state.theme, primary, secondary, accent, bg, logo: logo || state.theme.logo, background: bgImg || state.theme.background };
-      applyTheme();
-    });
-  }
-  const saveConfig = document.getElementById('saveConfig');
-  const discordInvite = document.getElementById('discordInvite');
-  if (saveConfig && discordInvite) {
-    saveConfig.addEventListener('click', () => {
-      state.config.discord = discordInvite.value.trim() || '#';
-      document.querySelectorAll('.socials a, .footer .icon-btn').forEach(a => {
-        if (a.title === 'Discord') a.href = state.config.discord;
-      });
-    });
-  }
-}
-
-// Update CSS vars and assets
 function applyTheme() {
   const root = document.documentElement;
   root.style.setProperty('--color-primary', state.theme.primary);
@@ -265,42 +203,6 @@ function applyTheme() {
   root.style.setProperty('--color-bg', state.theme.bg);
   $('#siteLogo').src = state.theme.logo;
   $('#bgImage').style.backgroundImage = `url('${state.theme.background}')`;
-}
-
-// Apply stat visibility to roster + leaderboard
-function applyStatVisibility() {
-  const v = state.visibleStats;
-  // roster cards: hide stat blocks by class
-  document.querySelectorAll('.stat-matches').forEach(el => el.style.display = v.matches ? '' : 'none');
-  document.querySelectorAll('.stat-wins').forEach(el => el.style.display = v.wins ? '' : 'none');
-  document.querySelectorAll('.stat-kd').forEach(el => el.style.display = v.kd ? '' : 'none');
-  document.querySelectorAll('.stat-rank').forEach(el => el.style.display = v.rank ? '' : 'none');
-  document.querySelectorAll('.stat-damage').forEach(el => el.style.display = v.damage ? '' : 'none');
-
-  // leaderboard columns
-  const ths = {
-    matches: document.querySelector('th[data-sort="matches"]'),
-    kd: document.querySelector('th[data-sort="kd"]'),
-    wins: document.querySelector('th[data-sort="wins"]'),
-    rank: document.querySelector('th[data-sort="rank"]'),
-  };
-  if (ths.matches) ths.matches.style.display = v.matches ? '' : 'none';
-  if (ths.kd) ths.kd.style.display = v.kd ? '' : 'none';
-  if (ths.wins) ths.wins.style.display = v.wins ? '' : 'none';
-  if (ths.rank) ths.rank.style.display = v.rank ? '' : 'none';
-
-  document.querySelectorAll('#leaderboard tbody tr').forEach(tr => {
-    const map = {
-      matches: tr.querySelector('.matches'),
-      kd: tr.querySelector('.kd'),
-      wins: tr.querySelector('.wins'),
-      rank: tr.querySelector('.rank'),
-    };
-    if (map.matches) map.matches.style.display = v.matches ? '' : 'none';
-    if (map.kd) map.kd.style.display = v.kd ? '' : 'none';
-    if (map.wins) map.wins.style.display = v.wins ? '' : 'none';
-    if (map.rank) map.rank.style.display = v.rank ? '' : 'none';
-  });
 }
 
 // Helper: source icons
@@ -313,49 +215,32 @@ function iconFor(source) {
   return map[source] || '';
 }
 
-// PUBG integration adapters (optional)
+// PUBG integration
 async function fetchPubgPlayerId(name) {
-  const res = await fetch(`/api/pubg/player/${encodeURIComponent(name)}`);
+  const res = await fetch(`${ENV.apiBase}/api/pubg/player/${encodeURIComponent(name)}`);
   if (!res.ok) throw new Error('Resolve failed');
-  return res.json(); // { id, name }
+  return res.json();
 }
 async function fetchPubgSeasonStats(playerId) {
-  const res = await fetch(`/api/pubg/stats/${encodeURIComponent(playerId)}`);
+  const res = await fetch(`${ENV.apiBase}/api/pubg/stats/${encodeURIComponent(playerId)}`);
   if (!res.ok) throw new Error('Stats failed');
-  return res.json(); // { season, overall, modes }
-}
-async function fetchPubgRecent() { return { count: 0 }; }
-
-async function refreshLiveStats() {
-  // Optional: could fetch live stats and render only (no writes)
-}
-
-function initApiConfig() {}
-
-function initSocialLinks() {
-  document.querySelectorAll('.socials a, .footer .icon-btn').forEach(a => {
-    if (a.title === 'Discord') a.href = state.config.discord;
-    if (a.title === 'YouTube') a.href = state.config.youtube;
-    if (a.title === 'Twitch') a.href = state.config.twitch;
-  });
+  return res.json();
 }
 
 // Boot
 window.addEventListener('DOMContentLoaded', () => {
-  loadState();
   enableSmoothScroll();
   initBurger();
   initViewMore();
   initSorting();
-  // Public homepage should not initialize admin handlers
-  initThemeActions();
-  initSocialLinks();
   applyTheme();
-  // Load data for public display
+  initSocialLinks();
+
   (async () => {
     try {
       const [newsRes, membersRes] = await Promise.all([
-        fetch('/api/news'), fetch('/api/members')
+        fetch(`${ENV.apiBase}/api/news`),
+        fetch(`${ENV.apiBase}/api/members`)
       ]);
       newsItems = await newsRes.json();
       members = await membersRes.json();
