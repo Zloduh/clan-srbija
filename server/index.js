@@ -206,13 +206,26 @@ app.get("/api/pubg/player/:name", async (req, res) => {
 app.get("/api/pubg/stats/:playerId", async (req, res) => {
   try {
     log('PUBG stats get', req.params.playerId);
-    const seasonId = "latest"; // PUBG supports /seasons?filter[seasonType]=official; mapping simplified
     const id = req.params.playerId;
-    const r = await pubgFetch(`/players/${id}/seasons/${seasonId}`);
-    if (!r.ok) return res.status(r.status).send(r.body);
-    const doc = r.body;
-    const s = doc.data && doc.data.attributes && doc.data.attributes.gameModeStats || {};
-    // Compose an overall summary (example using squad-fpp if present else any)
+
+    // 1️⃣ Get all seasons
+    const seasonsRes = await pubgFetch(`/seasons`);
+    if (!seasonsRes.ok) return res.status(seasonsRes.status).send(seasonsRes.body);
+
+    const current = (seasonsRes.body.data || []).find(s => s.attributes.isCurrentSeason);
+    if (!current) return res.status(404).json({ error: 'No current season found' });
+
+    const seasonId = current.id;
+    log('Using current season', seasonId);
+
+    // 2️⃣ Fetch player stats for that season
+    const statsRes = await pubgFetch(`/players/${id}/seasons/${seasonId}`);
+    if (!statsRes.ok) return res.status(statsRes.status).send(statsRes.body);
+
+    const doc = statsRes.body;
+    const s = doc.data?.attributes?.gameModeStats || {};
+
+    // 3️⃣ Simplified summary (priority order)
     const gm = s["squad-fpp"] || s["duo-fpp"] || s["solo-fpp"] || s["squad"] || s["duo"] || s["solo"] || {};
     const overall = {
       matches: gm.roundsPlayed || 0,
@@ -220,9 +233,14 @@ app.get("/api/pubg/stats/:playerId", async (req, res) => {
       kd: gm.kills ? ((gm.kills) / Math.max(1, gm.losses || (gm.roundsPlayed - gm.wins))).toFixed(2) : 0,
       adr: gm.damageDealt && gm.roundsPlayed ? (gm.damageDealt / Math.max(1, gm.roundsPlayed)).toFixed(0) : 0
     };
+
     res.json({ season: seasonId, overall, modes: s });
-  } catch (e) { res.status(500).json({ error: "PUBG stats failed" }); }
+  } catch (e) {
+    log('PUBG stats failed', e);
+    res.status(500).json({ error: "PUBG stats failed" });
+  }
 });
+
 
 // YouTube helper: extract videoId from url and fetch metadata via Data API v3
 app.get('/api/youtube/oembed', async (req, res) => {
