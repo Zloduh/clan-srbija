@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  proxy:
+    build: ./server
+    container_name: srbija-proxy
+    ports:
+      - "8787:8787"
+    env_file:
+      - server/.env
+    restart: unless-stopped

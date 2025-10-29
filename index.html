@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SRBIJA PUBG Clan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="favicon.ico">
+  <meta name="description" content="SRBIJA PUBG Clan portal: news, roster, stats, and admin controls.">
+</head>
+<body>
+  <!-- Theme root with CSS variables for easy customization -->
+  <div id="app" class="theme-dark">
+    <!-- Background image layer (editable later) -->
+    <div class="bg-image" id="bgImage" aria-hidden="true"></div>
+
+    <!-- Header / Navbar -->
+    <header class="navbar" id="top">
+      <div class="nav-left">
+        <img src="assets/logo-placeholder.png" alt="SRBIJA Logo" class="logo" id="siteLogo" />
+        <span class="brand">SRBIJA</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#news" class="nav-link">News</a>
+        <a href="#roster" class="nav-link">Roster</a>
+        <a href="#stats" class="nav-link">Stats</a>
+        <a href="#admin" class="nav-link">Admin</a>
+      </nav>
+      <div class="socials">
+        <a href="#" class="icon-btn" aria-label="Discord" title="Discord"><img src="assets/discord.svg" alt="Discord"></a>
+        <a href="#" class="icon-btn" aria-label="YouTube" title="YouTube"><img src="assets/youtube.svg" alt="YouTube"></a>
+        <a href="#" class="icon-btn" aria-label="Twitch" title="Twitch"><img src="assets/twitch.svg" alt="Twitch"></a>
+      </div>
+      <button class="burger" id="burger" aria-label="Open Menu"><span></span><span></span><span></span></button>
+    </header>
+
+    <!-- Mobile drawer -->
+    <div class="mobile-menu" id="mobileMenu" hidden>
+      <a href="#news" class="mobile-link">News</a>
+      <a href="#roster" class="mobile-link">Roster</a>
+      <a href="#stats" class="mobile-link">Stats</a>
+      <a href="#admin" class="mobile-link">Admin</a>
+    </div>
+
+    <main>
+      <!-- News Feed Section -->
+      <section id="news" class="section news-section">
+        <div class="section-header">
+          <h2 class="title-flag">Clan Updates</h2>
+          <p class="subtitle">Latest from our socials and announcements</p>
+        </div>
+        <div id="newsFeed" class="news-grid"><!-- populated by JS --></div>
+        <div class="center">
+          <button id="viewMoreNews" class="btn accent">View More</button>
+        </div>
+      </section>
+
+      <!-- Roster Section -->
+      <section id="roster" class="section roster-section">
+        <div class="section-header">
+          <h2 class="title-flag">Roster</h2>
+          <p class="subtitle">Tap a player to view detailed stats</p>
+        </div>
+        <div id="rosterGrid" class="roster-grid"><!-- populated by JS --></div>
+      </section>
+
+      <!-- Stats / Leaderboard Section -->
+      <section id="stats" class="section stats-section">
+        <div class="section-header">
+          <h2 class="title-flag">Team Stats</h2>
+          <p class="subtitle">Top performers and overall summary</p>
+        </div>
+        <div class="table-controls">
+          <label class="searchbox">
+            <input type="text" id="playerSearch" placeholder="Search player..." />
+          </label>
+        </div>
+        <div class="table-wrapper">
+          <table id="leaderboard" class="leaderboard">
+            <thead>
+              <tr>
+                <th data-sort="player">Player</th>
+                <th data-sort="matches">Matches</th>
+                <th data-sort="kd">K/D</th>
+                <th data-sort="wins">Wins</th>
+                <th data-sort="rank">Rank</th>
+              </tr>
+            </thead>
+            <tbody><!-- populated by JS --></tbody>
+          </table>
+        </div>
+        <!-- Placeholder for future PUBG API integration -->
+        <!-- Example: fetch PUBG stats by player ID and update leaderboard rows -->
+      </section>
+
+      <!-- Admin Panel (Simulated UI) -->
+      <section id="admin" class="section admin-section">
+        <div class="section-header">
+          <h2 class="title-flag">Admin Panel</h2>
+          <p class="subtitle">Simulated controls (local only)</p>
+        </div>
+
+        <!-- Login Screen -->
+        <div id="adminLogin" class="admin-login">
+          <div class="card login-card">
+            <h3>Admin Login</h3>
+            <label class="field">
+              <span>Username</span>
+              <input type="text" id="adminUser" placeholder="Enter username" />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input type="password" id="adminPass" placeholder="Enter password" />
+            </label>
+            <button id="adminLoginBtn" class="btn accent">Login</button>
+            <p class="muted creds">Demo credentials — user: admin / pass: srbija123</p>
+          </div>
+        </div>
+
+        <!-- Dashboard -->
+        <div id="adminDashboard" class="dashboard" hidden>
+          <div class="admin-tabs">
+            <button class="admin-tab active" data-tab="tab-members">Members</button>
+            <button class="admin-tab" data-tab="tab-news">News</button>
+            <button class="admin-tab" data-tab="tab-stats">Stats Display</button>
+            <button class="admin-tab" data-tab="tab-theme">Theme</button>
+            <button class="admin-tab" data-tab="tab-site">Site</button>
+            <button class="admin-tab" data-tab="tab-api">API</button>
+          </div>
+          <div class="admin-grid">
+            <!-- Members Management -->
+            <div class="card admin-pane" id="tab-members">
+              <h3>Members Management</h3>
+              <div id="membersList" class="list"><!-- populated by JS --></div>
+              <div class="form-inline">
+                <input id="memberNickname" type="text" placeholder="Nickname" />
+                <input id="memberAvatar" type="text" placeholder="Avatar URL" />
+                <input id="memberPUBGId" type="text" placeholder="PUBG ID" />
+                <button id="addMember" class="btn">Add</button>
+              </div>
+            </div>
+
+            <!-- News / Social Management -->
+            <div class="card admin-pane" id="tab-news" hidden>
+              <h3>News / Social Management</h3>
+              <div id="adminNewsList" class="list"><!-- populated by JS --></div>
+              <div class="form-inline">
+                <input id="postUrl" type="text" placeholder="Paste link (YouTube/Twitch/Discord) — optional" />
+                <input id="postTitle" type="text" placeholder="Post title (optional)" />
+                <input id="postThumb" type="text" placeholder="Thumbnail URL (optional)" />
+                <select id="postSource">
+                  <option value="discord">Discord</option>
+                  <option value="youtube">YouTube</option>
+                  <option value="twitch">Twitch</option>
+                </select>
+                <button id="addPost" class="btn">Add</button>
+              </div>
+            </div>
+
+            <!-- PUBG Stats Display Settings -->
+            <div class="card admin-pane" id="tab-stats" hidden>
+              <h3>PUBG Stats Display Settings</h3>
+              <div class="checks">
+                <label><input type="checkbox" class="stat-toggle" data-stat="matches" checked /> Matches</label>
+                <label><input type="checkbox" class="stat-toggle" data-stat="wins" checked /> Wins</label>
+                <label><input type="checkbox" class="stat-toggle" data-stat="kd" checked /> K/D</label>
+                <label><input type="checkbox" class="stat-toggle" data-stat="rank" checked /> Rank</label>
+                <label><input type="checkbox" class="stat-toggle" data-stat="damage" checked /> Damage</label>
+              </div>
+            </div>
+
+            <!-- Theme Customization -->
+            <div class="card admin-pane" id="tab-theme" hidden>
+              <h3>Theme Customization</h3>
+              <div class="theme-grid">
+                <div class="theme-field">
+                  <label>Primary (Red)</label>
+                  <input type="color" id="colorPrimary" value="#c1121f" />
+                </div>
+                <div class="theme-field">
+                  <label>Secondary (Blue)</label>
+                  <input type="color" id="colorSecondary" value="#0033a0" />
+                </div>
+                <div class="theme-field">
+                  <label>Accent (White)</label>
+                  <input type="color" id="colorAccent" value="#ffffff" />
+                </div>
+                <div class="theme-field">
+                  <label>Background</label>
+                  <input type="color" id="colorBg" value="#0b0d12" />
+                </div>
+              </div>
+              <div class="upload-grid">
+                <label class="upload">
+                  <span>Logo URL</span>
+                  <input type="text" id="logoUrl" placeholder="https://.../logo.png" />
+                </label>
+                <label class="upload">
+                  <span>Background URL</span>
+                  <input type="text" id="bgUrl" placeholder="https://.../background.jpg" />
+                </label>
+                <button id="applyTheme" class="btn">Apply</button>
+              </div>
+            </div>
+
+            <!-- Site Config -->
+            <div class="card admin-pane" id="tab-site" hidden>
+              <h3>Site Config</h3>
+              <label class="field">
+                <span>Discord Invite URL</span>
+                <input type="text" id="discordInvite" placeholder="https://discord.gg/..." />
+              </label>
+              <button id="saveConfig" class="btn accent">Save</button>
+            </div>
+
+            <!-- API Config -->
+            <div class="card admin-pane" id="tab-api" hidden>
+              <h3>API Configuration</h3>
+              <p class="muted">Store service URLs and keys here. Frontend saves to localStorage. Do not expose real secrets on public builds.</p>
+              <div class="list">
+                <div class="field">
+                  <span>PUBG API Base URL</span>
+                  <input type="text" id="apiPubgUrl" placeholder="https://your-proxy.example.com/pubg" />
+                </div>
+                <div class="field">
+                  <span>PUBG API Key</span>
+                  <input type="password" id="apiPubgKey" placeholder="sk-... (stored locally)" />
+                </div>
+                <div class="field">
+                  <span>Discord Bot Endpoint</span>
+                  <input type="text" id="apiDiscordUrl" placeholder="https://your-proxy.example.com/discord" />
+                </div>
+                <div class="field">
+                  <span>YouTube API Base URL</span>
+                  <input type="text" id="apiYoutubeUrl" placeholder="https://your-proxy.example.com/youtube" />
+                </div>
+                <div class="field">
+                  <span>YouTube API Key</span>
+                  <input type="password" id="apiYoutubeKey" placeholder="ya29... (stored locally)" />
+                </div>
+                <div class="field">
+                  <span>Twitch API Base URL</span>
+                  <input type="text" id="apiTwitchUrl" placeholder="https://your-proxy.example.com/twitch" />
+                </div>
+                <div class="field">
+                  <span>Twitch Client ID</span>
+                  <input type="text" id="apiTwitchClientId" placeholder="twitch-client-id" />
+                </div>
+                <div class="field">
+                  <span>Twitch Client Secret</span>
+                  <input type="password" id="apiTwitchClientSecret" placeholder="twitch-client-secret (stored locally)" />
+                </div>
+              </div>
+              <div class="form-inline">
+                <button id="apiTestPubg" class="btn">Test PUBG</button>
+                <button id="apiTestDiscord" class="btn">Test Discord</button>
+                <button id="apiTestYoutube" class="btn">Test YouTube</button>
+                <button id="apiTestTwitch" class="btn">Test Twitch</button>
+                <button id="apiSaveAll" class="btn accent">Save API Config</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-left">© SRBIJA Clan</div>
+      <div class="footer-right">
+        <a href="#" class="icon-btn" aria-label="Discord" title="Discord"><img src="assets/discord.svg" alt="Discord"></a>
+        <a href="#" class="icon-btn" aria-label="YouTube" title="YouTube"><img src="assets/youtube.svg" alt="YouTube"></a>
+        <a href="#" class="icon-btn" aria-label="Twitch" title="Twitch"><img src="assets/twitch.svg" alt="Twitch"></a>
+      </div>
+    </footer>
+  </div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-content">
+      <button id="modalClose" class="modal-close" aria-label="Close">×</button>
+      <h3>Full Feed</h3>
+      <div id="modalBody" class="modal-body"><!-- populated by JS --></div>
+    </div>
+  </div>
+
+  <!-- Edit Member Modal -->
+  <div id="memberModal" class="modal" hidden>
+    <div class="modal-content">
+      <button id="memberModalClose" class="modal-close" aria-label="Close">×</button>
+      <h3>Edit Member</h3>
+      <div class="field">
+        <span>Nickname</span>
+        <input type="text" id="editNickname" />
+      </div>
+      <div class="field">
+        <span>Avatar URL</span>
+        <input type="text" id="editAvatar" />
+      </div>
+      <div class="field">
+        <span>PUBG ID</span>
+        <input type="text" id="editPubgId" />
+      </div>
+      <div class="form-inline" style="grid-template-columns:auto auto;">
+        <button id="memberSave" class="btn accent">Save</button>
+        <button id="memberCancel" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
