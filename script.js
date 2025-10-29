@@ -225,28 +225,35 @@ function loadState() {
 }
 
 function initThemeActions() {
-  $('#applyTheme').addEventListener('click', () => {
-    const primary = $('#colorPrimary').value;
-    const secondary = $('#colorSecondary').value;
-    const accent = $('#colorAccent').value;
-    const bg = $('#colorBg').value;
-    const logo = $('#logoUrl').value.trim();
-    const bgUrl = $('#bgUrl').value.trim();
-
-    state.theme = { ...state.theme, primary, secondary, accent, bg, logo: logo || state.theme.logo, background: bgUrl || state.theme.background };
-    applyTheme();
-    persistState();
-  });
-
-  $('#saveConfig').addEventListener('click', () => {
-    state.config.discord = $('#discordInvite').value.trim() || '#';
-    // Update links
-    document.querySelectorAll('.socials a, .footer .icon-btn').forEach(a => {
-      if (a.title === 'Discord') a.href = state.config.discord;
+  const applyBtn = document.getElementById('applyTheme');
+  const colorPrimary = document.getElementById('colorPrimary');
+  const colorSecondary = document.getElementById('colorSecondary');
+  const colorAccent = document.getElementById('colorAccent');
+  const colorBg = document.getElementById('colorBg');
+  const logoUrl = document.getElementById('logoUrl');
+  const bgUrl = document.getElementById('bgUrl');
+  if (applyBtn && colorPrimary && colorSecondary && colorAccent && colorBg && logoUrl && bgUrl) {
+    applyBtn.addEventListener('click', () => {
+      const primary = colorPrimary.value;
+      const secondary = colorSecondary.value;
+      const accent = colorAccent.value;
+      const bg = colorBg.value;
+      const logo = logoUrl.value.trim();
+      const bgImg = bgUrl.value.trim();
+      state.theme = { ...state.theme, primary, secondary, accent, bg, logo: logo || state.theme.logo, background: bgImg || state.theme.background };
+      applyTheme();
     });
-    persistState();
-    alert('Config saved (local only).');
-  });
+  }
+  const saveConfig = document.getElementById('saveConfig');
+  const discordInvite = document.getElementById('discordInvite');
+  if (saveConfig && discordInvite) {
+    saveConfig.addEventListener('click', () => {
+      state.config.discord = discordInvite.value.trim() || '#';
+      document.querySelectorAll('.socials a, .footer .icon-btn').forEach(a => {
+        if (a.title === 'Discord') a.href = state.config.discord;
+      });
+    });
+  }
 }
 
 // Update CSS vars and assets
