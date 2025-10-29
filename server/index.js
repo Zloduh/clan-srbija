@@ -33,7 +33,7 @@ async function dbInit() {
     CREATE TABLE IF NOT EXISTS news (
       id BIGINT PRIMARY KEY,
       title TEXT NOT NULL,
-      desc TEXT,
+      description TEXT,
       thumb TEXT,
       source TEXT,
       url TEXT
@@ -113,7 +113,7 @@ app.delete("/api/members/:id", requireAdmin, async (req, res) => {
 app.get("/api/news", async (req, res) => {
   try {
     if (!pool) return res.json([]);
-    const r = await pool.query('SELECT id, title, desc, thumb, source, url FROM news ORDER BY id DESC');
+    const r = await pool.query('SELECT id, title, description as "desc", thumb, source, url FROM news ORDER BY id DESC');
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
@@ -121,18 +121,20 @@ app.post("/api/news", requireAdmin, async (req, res) => {
   try {
     if (!pool) return res.status(500).json({ error: 'DB not configured' });
     const id = Date.now();
-    const { title, desc, thumb, source, url } = req.body || {};
-    await pool.query('INSERT INTO news (id, title, desc, thumb, source, url) VALUES ($1,$2,$3,$4,$5,$6)', [id, title, desc, thumb, source, url]);
-    res.status(201).json({ id, title, desc, thumb, source, url });
+    const { title, desc, description, thumb, source, url } = req.body || {};
+    const dbDesc = (typeof description !== 'undefined') ? description : desc;
+    await pool.query('INSERT INTO news (id, title, description, thumb, source, url) VALUES ($1,$2,$3,$4,$5,$6)', [id, title, dbDesc, thumb, source, url]);
+    res.status(201).json({ id, title, desc: dbDesc, thumb, source, url });
   } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
 app.put("/api/news/:id", requireAdmin, async (req, res) => {
   try {
     if (!pool) return res.status(500).json({ error: 'DB not configured' });
     const id = Number(req.params.id);
-    const { title, desc, thumb, source, url } = req.body || {};
-    await pool.query('UPDATE news SET title=COALESCE($2,title), desc=COALESCE($3,desc), thumb=COALESCE($4,thumb), source=COALESCE($5,source), url=COALESCE($6,url) WHERE id=$1', [id, title, desc, thumb, source, url]);
-    const r = await pool.query('SELECT id, title, desc, thumb, source, url FROM news WHERE id=$1', [id]);
+    const { title, desc, description, thumb, source, url } = req.body || {};
+    const dbDesc = (typeof description !== 'undefined') ? description : desc;
+    await pool.query('UPDATE news SET title=COALESCE($2,title), description=COALESCE($3,description), thumb=COALESCE($4,thumb), source=COALESCE($5,source), url=COALESCE($6,url) WHERE id=$1', [id, title, dbDesc, thumb, source, url]);
+    const r = await pool.query('SELECT id, title, description as "desc", thumb, source, url FROM news WHERE id=$1', [id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
     res.json(r.rows[0]);
   } catch (e) { res.status(500).json({ error: 'DB error' }); }
