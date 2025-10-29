@@ -222,3 +222,94 @@ window.addEventListener('DOMContentLoaded', () => {
   initAuth();
   initTabsWiring();
 });
+
+
+// ==== YouTube Admin ===
+async function ytLoadChannels() {
+  const res = await fetch('/api/youtube/channels', { headers: adminAuthHeader() });
+  if (!res.ok) { console.warn('Failed to load channels'); return; }
+  const items = await res.json();
+  const list = document.getElementById('ytList');
+  list.innerHTML = '';
+  items.forEach(ch => {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.innerHTML = \`
+      <div>
+        <div style="font-weight:700">\${ch.title || ch.id}</div>
+        <div class="muted">\${ch.url}</div>
+      </div>
+      <div>
+        <button class="btn" data-del="\${ch.id}">Delete</button>
+      </div>
+    \`;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this channel?')) return;
+      const id = btn.getAttribute('data-del');
+      const del = await fetch('/api/youtube/channels/'+encodeURIComponent(id), { method:'DELETE', headers: adminAuthHeader() });
+      if (del.ok) ytLoadChannels();
+    });
+  });
+}
+
+function adminAuthHeader() {
+  const token = localStorage.getItem('ADMIN_API_TOKEN') || '';
+  return { 'Authorization': token ? ('Bearer ' + token) : '' };
+}
+
+async function ytAddChannel() {
+  const urlOrId = document.getElementById('ytUrl').value.trim();
+  const title = document.getElementById('ytTitle').value.trim();
+  if (!urlOrId) return alert('Enter channel URL/@handle/UCid');
+  const res = await fetch('/api/youtube/channels', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', ...adminAuthHeader() },
+    body: JSON.stringify({ urlOrId, title })
+  });
+  if (!res.ok) { const j = await res.json().catch(()=>({})); alert('Add failed: ' + (j.error||res.status)); return; }
+  document.getElementById('ytUrl').value='';
+  document.getElementById('ytTitle').value='';
+  ytLoadChannels();
+}
+
+async function ytSyncNow() {
+  const res = await fetch('/api/news/sync-youtube', { method:'POST', headers: adminAuthHeader() });
+  if (res.ok) alert('Sync started');
+  else alert('Sync failed');
+}
+
+// ==== YouTube oEmbed autofill for News form ====
+function hookNewsOembed() {
+  const urlInput = document.getElementById('newsUrl');
+  const titleInput = document.getElementById('newsTitle');
+  const descInput = document.getElementById('newsDesc');
+  const thumbInput = document.getElementById('newsThumb');
+  if (!urlInput || !titleInput || !descInput || !thumbInput) return;
+
+  urlInput.addEventListener('change', async () => {
+    const url = urlInput.value.trim();
+    if (!url) return;
+    if (/youtube\.com|youtu\.be/.test(url)) {
+      try {
+        const res = await fetch('/api/youtube/oembed?url=' + encodeURIComponent(url));
+        if (!res.ok) return;
+        const j = await res.json();
+        if (j.title && !titleInput.value) titleInput.value = j.title;
+        if (j.description && !descInput.value) descInput.value = j.description;
+        if (j.thumbnail_url && !thumbInput.value) thumbInput.value = j.thumbnail_url;
+      } catch (e) { console.warn('oembed failed', e); }
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const addBtn = document.getElementById('ytAdd');
+  const syncBtn = document.getElementById('ytSync');
+  if (addBtn) addBtn.addEventListener('click', ytAddChannel);
+  if (syncBtn) syncBtn.addEventListener('click', ytSyncNow);
+  if (document.getElementById('ytList')) ytLoadChannels();
+  hookNewsOembed();
+});

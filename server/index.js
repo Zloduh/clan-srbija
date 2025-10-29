@@ -31,6 +31,15 @@ async function dbInit() {
       scope TEXT
     );
   `);
+  
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS youtube_channels (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      url TEXT,
+      auto_publish BOOLEAN DEFAULT true
+    );
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS news (
       id BIGINT PRIMARY KEY,
@@ -243,29 +252,103 @@ app.get("/api/pubg/stats/:playerId", async (req, res) => {
 
 
 // YouTube helper: extract videoId from url and fetch metadata via Data API v3
+
 app.get('/api/youtube/oembed', async (req, res) => {
   try {
     const key = process.env.YOUTUBE_API_KEY;
-    const url = req.query.url || '';
+    const url = String(req.query.url || '');
     log('YouTube oembed', { url, hasKey: !!key });
     if (!key) return res.status(500).json({ error: 'YOUTUBE_API_KEY missing' });
-    const idMatch = /(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{6,})/.exec(url);
-    const videoId = idMatch && idMatch[1];
+
+    let videoId = null;
+    try {
+      const u = new URL(url);
+      videoId = u.searchParams.get('v');
+    } catch (_) {}
+    if (!videoId) {
+      const m = /(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{6,})/.exec(url);
+      videoId = m && m[1];
+    }
     if (!videoId) return res.status(400).json({ error: 'Invalid YouTube URL' });
-    const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${key}`);
+
+    const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${key}`);
     const data = await ytRes.json();
     const item = data.items && data.items[0];
     if (!item) return res.status(404).json({ error: 'Video not found' });
-    const sn = item.snippet;
+
+    const sn = item.snippet || {};
     const thumb = sn.thumbnails && (sn.thumbnails.maxres || sn.thumbnails.high || sn.thumbnails.medium || sn.thumbnails.default);
+
     res.json({
-      title: sn.title,
-      author_name: sn.channelTitle,
-      thumbnail_url: thumb && thumb.url,
+      provider: 'youtube',
       url,
-      provider: 'youtube'
+      videoId: item.id,
+      title: sn.title,
+      description: sn.description,
+      author_name: sn.channelTitle,
+      published_at: sn.publishedAt,
+      thumbnail_url: thumb && thumb.url
     });
   } catch (e) { log('YouTube error', e && e.message); res.status(500).json({ error: 'YouTube fetch failed' }); }
+});
+
+
+async function ytResolveChannelId(urlOrId, key) {
+  if (/^UC[0-9A-Za-z_-]{20,}$/.test(urlOrId)) return urlOrId;
+  const m = /\/channel\/(UC[0-9A-Za-z_-]{20,})/.exec(urlOrId);
+  if (m) return m[1];
+  const cleaned = String(urlOrId).replace(/^https?:\/\/(www\.)?youtube\.com\//, '').trim();
+  const resp = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(cleaned)}&maxResults=1&key=${key}`);
+  const j = await resp.json();
+  const ch = j.items && j.items[0];
+  return ch ? ch.snippet.channelId : null;
+}
+async function ytFetchLatestVideos(channelId, key, maxResults = 10) {
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&maxResults=${maxResults}&key=${key}`;
+  const r = await fetch(url);
+  const j = await r.json();
+  return (j.items || []).map(it => ({
+    videoId: it.id.videoId,
+    title: it.snippet.title,
+    description: it.snippet.description,
+    thumb: (it.snippet.thumbnails && (it.snippet.thumbnails.high?.url || it.snippet.thumbnails.medium?.url || it.snippet.thumbnails.default?.url)) || null,
+    publishedAt: it.snippet.publishedAt,
+    channelTitle: it.snippet.channelTitle,
+    url: `https://www.youtube.com/watch?v=${it.id.videoId}`,
+  }));
+}
+
+
+
+// YouTube channels CRUD (admin)
+app.get('/api/youtube/channels', requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.json([]);
+    const r = await pool.query('SELECT id, title, url, auto_publish FROM youtube_channels ORDER BY title NULLS LAST, id');
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
+});
+app.post('/api/youtube/channels', requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    const key = process.env.YOUTUBE_API_KEY;
+    if (!key) return res.status(500).json({ error: 'YOUTUBE_API_KEY missing' });
+    const { urlOrId = '', title = null, auto_publish = true } = req.body || {};
+    const channelId = await ytResolveChannelId(String(urlOrId), key);
+    if (!channelId) return res.status(400).json({ error: 'Unable to resolve channelId' });
+    await pool.query(
+      'INSERT INTO youtube_channels (id, title, url, auto_publish) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET title=COALESCE(EXCLUDED.title, youtube_channels.title), url=EXCLUDED.url, auto_publish=EXCLUDED.auto_publish',
+      [channelId, title, urlOrId, !!auto_publish]
+    );
+    res.status(201).json({ id: channelId, title, url: urlOrId, auto_publish: !!auto_publish });
+  } catch (e) { log('yt add error', e?.message); res.status(500).json({ error: 'Add channel failed' }); }
+});
+app.delete('/api/youtube/channels/:id', requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    await pool.query('DELETE FROM youtube_channels WHERE id=$1', [req.params.id]);
+    res.status(204).end();
+  } catch (e) { res.status(500).json({ error: 'Delete failed' }); }
 });
 
 // Twitch helper: get app access token, then basic metadata for a channel or video
@@ -323,6 +406,38 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../index.html"));
 });
 
+
+async function runYouTubeSyncOnce() {
+  if (!pool) { log('YouTube sync skipped: no DB'); return; }
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) { log('YouTube sync skipped: missing YOUTUBE_API_KEY'); return; }
+  try {
+    const channels = await pool.query('SELECT id, title, auto_publish FROM youtube_channels');
+    for (const ch of channels.rows) {
+      const vids = await ytFetchLatestVideos(ch.id, key, 10);
+      for (const v of vids) {
+        const exists = await pool.query('SELECT 1 FROM news WHERE url=$1 LIMIT 1', [v.url]);
+        if (exists.rowCount) continue;
+        const id = Date.now();
+        await pool.query(
+          'INSERT INTO news (id, title, description, thumb, source, url) VALUES ($1,$2,$3,$4,$5,$6)',
+          [id, v.title, v.description, v.thumb, 'youtube', v.url]
+        );
+        log('YouTube sync: inserted', v.url);
+      }
+    }
+  } catch (e) { log('YouTube sync error', e?.message); }
+}
+app.post('/api/news/sync-youtube', requireAdmin, async (req, res) => {
+  await runYouTubeSyncOnce();
+  res.json({ ok: true });
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
+
+/** YouTube auto-sync schedule */
+setTimeout(runYouTubeSyncOnce, 10_000);               // initial run after boot
+setInterval(runYouTubeSyncOnce, 3 * 60 * 60 * 1000);  // every 3 hours
