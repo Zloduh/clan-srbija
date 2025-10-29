@@ -103,6 +103,42 @@ function initViewMore() {
   close.addEventListener('click', () => modal.hidden = true);
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
 }
+function applyStatVisibility() {
+  const v = state.visibleStats;
+
+  // Roster card stats
+  document.querySelectorAll('.stat-matches').forEach(el => el.style.display = v.matches ? '' : 'none');
+  document.querySelectorAll('.stat-wins').forEach(el => el.style.display = v.wins ? '' : 'none');
+  document.querySelectorAll('.stat-kd').forEach(el => el.style.display = v.kd ? '' : 'none');
+  document.querySelectorAll('.stat-rank').forEach(el => el.style.display = v.rank ? '' : 'none');
+  document.querySelectorAll('.stat-damage').forEach(el => el.style.display = v.damage ? '' : 'none');
+
+  // Leaderboard columns
+  const ths = {
+    matches: document.querySelector('th[data-sort="matches"]'),
+    kd: document.querySelector('th[data-sort="kd"]'),
+    wins: document.querySelector('th[data-sort="wins"]'),
+    rank: document.querySelector('th[data-sort="rank"]'),
+  };
+  if (ths.matches) ths.matches.style.display = v.matches ? '' : 'none';
+  if (ths.kd) ths.kd.style.display = v.kd ? '' : 'none';
+  if (ths.wins) ths.wins.style.display = v.wins ? '' : 'none';
+  if (ths.rank) ths.rank.style.display = v.rank ? '' : 'none';
+
+  // Leaderboard rows
+  document.querySelectorAll('#leaderboard tbody tr').forEach(tr => {
+    const map = {
+      matches: tr.querySelector('.matches'),
+      kd: tr.querySelector('.kd'),
+      wins: tr.querySelector('.wins'),
+      rank: tr.querySelector('.rank'),
+    };
+    if (map.matches) map.matches.style.display = v.matches ? '' : 'none';
+    if (map.kd) map.kd.style.display = v.kd ? '' : 'none';
+    if (map.wins) map.wins.style.display = v.wins ? '' : 'none';
+    if (map.rank) map.rank.style.display = v.rank ? '' : 'none';
+  });
+}
 
 // Render roster cards with expandable stats
 function renderRoster() {
