@@ -197,6 +197,7 @@ function renderRoster() {
       </div>
       <div class="card-footer">
         <button class="toggle">View Stats</button>
+        <button class="refresh">Update PUBG Stats</button>
         <label class="muted">Scope:
           <select class="scope-select">
             <option value="overall" ${scope==='overall'?'selected':''}>Overall</option>
@@ -206,15 +207,17 @@ function renderRoster() {
       </div>
       <div class="player-expand expandable">
         <div class="stats-grid">
+          <div class="stat muted empty-hint" style="${(!m.stats||Object.keys(m.stats).length===0)?'':'display:none'}">Awaiting recon…<br/>PUBG stats not loaded</div>
           <div class="stat stat-matches"><div class="label">Matches</div><div class="value matches-played">${m.stats.matches}</div></div>
           <div class="stat stat-wins"><div class="label">Wins</div><div class="value wins">${m.stats.wins}</div></div>
-          <div class="stat stat-kd"><div class="label">K/D</div><div class="value kd-ratio">${m.stats.kd}</div></div>
+          <div class="stat stat-kd"><div class="label">K/D</div><div class="value kd-ratio">${(m.stats && m.stats.kd!=null) ? Number(m.stats.kd).toFixed(2) : 0}</div></div>
           <div class="stat stat-rank"><div class="label">Rank</div><div class="value rank">${m.stats.rank}</div></div>
-          <div class="stat stat-damage"><div class="label">Damage</div><div class="value total-damage">${m.stats.damage}</div></div>
+          <div class="stat stat-damage"><div class="label">Damage</div><div class="value total-damage">${(m.stats && m.stats.adr!=null) ? Math.round(m.stats.adr) : 0}</div></div>
         </div>
       </div>
     `;
     const toggle = card.querySelector('.toggle');
+    const refresh = card.querySelector('.refresh');
     const expand = card.querySelector('.player-expand');
     toggle.addEventListener('click', async () => {
       expand.classList.toggle('open');
@@ -252,7 +255,7 @@ function renderLeaderboard() {
     <tr>
       <td>${m.nickname}</td>
       <td class="matches">${m.stats.matches}</td>
-      <td class="kd">${m.stats.kd}</td>
+      <td class="kd">${(m.stats && m.stats.kd!=null) ? Number(m.stats.kd).toFixed(2) : 0}</td>
       <td class="wins">${m.stats.wins}</td>
       <td class="rank">${m.stats.rank}</td>
     </tr>`).join('');
@@ -337,3 +340,34 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch (e) { console.warn('Public data load failed', e); }
   })();
 });
+
+    refresh.addEventListener('click', async () => {
+      try {
+        showSpinner();
+        const r = await fetch(`${ENV.apiBase}/api/members/${encodeURIComponent(m.id)}/refresh-pubg`, { method:'POST' });
+        if (!r.ok) {
+          const err = await r.json().catch(()=>({}));
+          const msg = (err && (err.message || err.error)) || "PUBG stats failed";
+          toast(msg);
+          return;
+        }
+        const updated = await r.json();
+        m.pubgId = updated.pubgId || m.pubgId;
+        m.stats = updated.stats || m.stats || {};
+        // Update UI numbers with formatting
+        const kd = (m.stats && m.stats.kd!=null) ? Number(m.stats.kd).toFixed(2) : '0.00';
+        const adr = (m.stats && m.stats.adr!=null) ? Math.round(m.stats.adr) : 0;
+        const mp = card.querySelector('.matches-played'); if (mp) mp.textContent = m.stats.matches ?? 0;
+        const wn = card.querySelector('.wins'); if (wn) wn.textContent = m.stats.wins ?? 0;
+        const kdv = card.querySelector('.kd-ratio'); if (kdv) kdv.textContent = kd;
+        const dmg = card.querySelector('.total-damage'); if (dmg) dmg.textContent = adr;
+        const hint = card.querySelector('.empty-hint'); if (hint) hint.style.display = 'none';
+        renderLeaderboard();
+        toast('PUBG stats updated', 'ok');
+      } catch (e) {
+        console.warn('refresh error', e);
+        toast('PUBG stats failed');
+      } finally {
+        hideSpinner();
+      }
+    });

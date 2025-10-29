@@ -251,6 +251,70 @@ app.get("/api/pubg/stats/:playerId", async (req, res) => {
 });
 
 
+
+// Refresh PUBG stats for a member (resolve name->account id if needed), save to DB, and return updated row
+app.post("/api/members/:id/refresh-pubg", async (req, res) => {
+  try {
+    const memberId = req.params.id;
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    const mr = await pool.query('SELECT id, nickname, avatar, pubg_id as "pubgId", stats, scope FROM members WHERE id=$1', [memberId]);
+    const m = mr.rows[0];
+    if (!m) return res.status(404).json({ error: 'Not found' });
+
+    // Determine identifier to resolve if needed
+    let identifier = (m.pubgId && !m.pubgId.startsWith('account.')) ? m.pubgId : null;
+    if (!identifier) identifier = m.nickname;
+
+    // Resolve player if pubgId missing or not in account.* form
+    let pubgId = m.pubgId;
+    if (!pubgId || !pubgId.startsWith('account.')) {
+      const rr = await pubgFetch(`/players?filter[playerNames]=${encodeURIComponent(identifier)}`);
+      if (!rr.ok) {
+        return res.status(400).json({ error: "resolve_failed", detail: rr.body });
+      }
+      const pdata = rr.body && rr.body.data && rr.body.data[0];
+      if (!pdata) {
+        return res.status(404).json({ error: "not_found", message: "The Unknown player you are looking for is still missing, or they got him. Check your intel for this person, maybe you got the wrong guy!" });
+      }
+      pubgId = pdata.id;
+    }
+
+    // Fetch latest season stats
+    const seasonId = "latest";
+    const sr = await pubgFetch(`/players/${pubgId}/seasons/${seasonId}`);
+    if (!sr.ok) return res.status(sr.status).send(sr.body);
+    const doc = sr.body;
+    const s = (doc.data && doc.data.attributes && doc.data.attributes.gameModeStats) || {};
+    const gm = s["squad-fpp"] || s["duo-fpp"] || s["solo-fpp"] || s["squad"] || s["duo"] || s["solo"] || {};
+    const matches = gm.roundsPlayed || 0;
+    const wins = gm.wins || 0;
+    const kills = gm.kills || 0;
+    const losses = (gm.losses != null) ? gm.losses : Math.max(0, (gm.roundsPlayed || 0) - (gm.wins || 0));
+    const kd = kills / Math.max(1, losses);
+    const adr = gm.damageDealt && gm.roundsPlayed ? (gm.damageDealt / Math.max(1, gm.roundsPlayed)) : 0;
+    // Rank fields vary; include what we can
+    const rank = (gm.rankPointsTitle) || (gm.rankPoints) || null;
+
+    const updatedStats = {
+      matches,
+      wins,
+      kd: Number.isFinite(kd) ? Number(kd.toFixed(2)) : 0,
+      adr: Math.round(adr || 0),
+      rank,
+      lastUpdated: new Date().toISOString()
+    };
+
+    // Save back to DB
+    await pool.query('UPDATE members SET pubg_id=$2, stats=$3::jsonb WHERE id=$1', [memberId, pubgId, JSON.stringify(updatedStats)]);
+    const out = await pool.query('SELECT id, nickname, avatar, pubg_id as "pubgId", stats, scope FROM members WHERE id=$1', [memberId]);
+    res.json(out.rows[0]);
+  } catch (e) {
+    log('refresh-pubg error', e && e.message);
+    res.status(500).json({ error: "refresh_failed" });
+  }
+});
+
+
 // YouTube helper: extract videoId from url and fetch metadata via Data API v3
 
 app.get('/api/youtube/oembed', async (req, res) => {
