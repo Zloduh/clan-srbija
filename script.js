@@ -144,10 +144,8 @@ function renderRoster() {
       toggle.textContent = expand.classList.contains('open') ? 'Hide Stats' : 'View Stats';
     });
     const scopeSel = card.querySelector('.scope-select');
-    scopeSel.addEventListener('change', async () => {
+    scopeSel.addEventListener('change', () => {
       m.scope = scopeSel.value;
-      persistDataStores();
-      await refetchMemberStats(m);
       renderRoster();
       renderLeaderboard();
     });
@@ -208,22 +206,8 @@ function initMemberActions() {}
 // Add post
 function openMemberModal() {}
 
-async function refetchMemberStats(member) {
-  try {
-    if (!state.api.pubgUrl || !member.pubgId) return;
-    const idInfo = await fetchPubgPlayerId(member.pubgId);
-    const seasonParam = (member.scope === 'season') ? 'current' : 'lifetime';
-    // lifetime not directly supported on server; use overall via /seasons/lifetime mapping server side; if server only supports current, it should fallback
-    const stats = await fetchPubgSeasonStats(idInfo.id + (seasonParam==='current'?'':'') );
-    member.stats = member.stats || {};
-    member.stats.matches = stats.overall.matches;
-    member.stats.wins = stats.overall.wins;
-    member.stats.kd = stats.overall.kd;
-    member.stats.rank = member.stats.rank || 'Season';
-    member.stats.damage = stats.overall.adr;
-    persistDataStores();
-  } catch (e) { console.warn('Refetch member stats failed', e); }
-}
+// No live refetch on public page
+function refetchMemberStats() {}
 
 function initPostActions() {}
     const url = $('#postUrl').value.trim();
@@ -382,43 +366,13 @@ async function fetchPubgSeasonStats(playerId) {
   if (!res.ok) throw new Error('Stats failed');
   return res.json(); // { season, overall, modes }
 }
-async function fetchPubgRecent(playerId, limit=20) {
-  if (!state.api.pubgUrl) throw new Error('PUBG base URL not configured');
-  const res = await fetch(`${state.api.pubgUrl}/recent/${encodeURIComponent(playerId)}?limit=${limit}`);
-  if (!res.ok) throw new Error('Recent failed');
-  return res.json(); // { count, kd, adr, winRate, top10Rate }
-}
+async function fetchPubgRecent() { return { count: 0 }; }
 
 async function refreshLiveStats() {
   // Optional: could fetch live stats and render only (no writes)
 }
 
-function initApiConfig() {
-  // load values into fields
-  const map = [
-    ['apiPubgUrl','pubgUrl'], ['apiPubgKey','pubgKey'],
-    ['apiDiscordUrl','discordUrl'],
-    ['apiYoutubeUrl','youtubeUrl'], ['apiYoutubeKey','youtubeKey'],
-    ['apiTwitchUrl','twitchUrl'], ['apiTwitchClientId','twitchClientId'], ['apiTwitchClientSecret','twitchClientSecret']
-  ];
-  map.forEach(([id, key]) => { const el = document.getElementById(id); if (el) el.value = state.api[key] || ''; });
-
-  const save = document.getElementById('apiSaveAll');
-  if (save) save.addEventListener('click', () => {
-    map.forEach(([id, key]) => { const el = document.getElementById(id); if (el) state.api[key] = el.value.trim(); });
-    persistState();
-    alert('API configuration saved locally.');
-  });
-
-  // simple test buttons (no real calls; validates fields present)
-  const tests = {
-    apiTestPubg: () => state.api.pubgUrl ? alert('PUBG URL set: ' + state.api.pubgUrl) : alert('Set PUBG URL'),
-    apiTestDiscord: () => state.api.discordUrl ? alert('Discord endpoint set: ' + state.api.discordUrl) : alert('Set Discord endpoint'),
-    apiTestYoutube: () => state.api.youtubeUrl ? alert('YouTube URL set: ' + state.api.youtubeUrl) : alert('Set YouTube URL'),
-    apiTestTwitch: () => state.api.twitchUrl ? alert('Twitch URL set: ' + state.api.twitchUrl) : alert('Set Twitch URL'),
-  };
-  Object.entries(tests).forEach(([id, fn]) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); });
-}
+function initApiConfig() {}
 
 function initSocialLinks() {
   document.querySelectorAll('.socials a, .footer .icon-btn').forEach(a => {
