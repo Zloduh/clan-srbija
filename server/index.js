@@ -67,6 +67,11 @@ function requireAdmin(req, res, next) {
   if (auth.startsWith("Bearer ") && auth.slice(7) === ADMIN_API_TOKEN) return next();
   return res.status(401).json({ error: "Unauthorized" });
 }
+// Auth check endpoint: returns 204 if authorized
+app.get('/api/auth/check', requireAdmin, (req, res) => {
+  // If middleware passes, we are authorized
+  res.status(204).end();
+});
 
 // Members CRUD (DB)
 app.get("/api/members", async (req, res) => {

@@ -197,19 +197,39 @@ function initSorting() {
 
 // Admin panel UI
 function initAdmin() {
+  // Replace mock auth with token-based auth via sessionStorage
+  const existing = sessionStorage.getItem('srbija_admin_token');
+  if (existing) {
+    adminBearer = existing;
+    $('#adminLogin').hidden = true;
+    $('#adminDashboard').hidden = false;
+    paintAdminData();
+    initAdminTabs();
+  }
   const loginBtn = $('#adminLoginBtn');
-  loginBtn.addEventListener('click', () => {
-    const u = $('#adminUser').value.trim();
-    const p = $('#adminPass').value.trim();
-    if (u === 'admin' && p === 'srbija123') {
-      state.auth.loggedIn = true;
+  loginBtn.addEventListener('click', async () => {
+    const token = $('#adminPass').value.trim(); // reuse password field as token input
+    if (!token) { alert('Enter Admin API Token'); return; }
+    adminBearer = token;
+    const r = await fetch('/api/auth/check', withAuth());
+    if (r.status === 204) {
+      sessionStorage.setItem('srbija_admin_token', adminBearer);
       $('#adminLogin').hidden = true;
       $('#adminDashboard').hidden = false;
       paintAdminData();
       initAdminTabs();
     } else {
-      alert('Invalid credentials.');
+      adminBearer = '';
+      alert('Invalid token');
     }
+  });
+  // Add logout if button exists
+  const logoutBtn = document.getElementById('adminLogout');
+  if (logoutBtn) logoutBtn.addEventListener('click', () => {
+    adminBearer = '';
+    sessionStorage.removeItem('srbija_admin_token');
+    $('#adminDashboard').hidden = true;
+    $('#adminLogin').hidden = false;
   });
 }
 
