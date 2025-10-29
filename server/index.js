@@ -10,6 +10,8 @@ import pkg from 'pg';
 const { Pool } = pkg;
 
 dotenv.config();
+const DEBUG = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
+function log(...args) { if (DEBUG) console.log('[DEBUG]', ...args); }
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -50,6 +52,12 @@ const __dirname = path.dirname(__filename);
 app.use(cors());
 app.use(express.json());
 
+// Client log endpoint for debugging
+app.post('/api/log', (req, res) => {
+  log('client-log', req.body && req.body.message, req.body && req.body.meta);
+  res.status(204).end();
+});
+
 app.use((req, res, next) => {
   if (req.headers["x-forwarded-proto"] !== "https" && process.env.NODE_ENV === "production") {
     return res.redirect("https://" + req.headers.host + req.url);
@@ -76,6 +84,7 @@ app.get('/api/auth/check', requireAdmin, (req, res) => {
 // Members CRUD (DB)
 app.get("/api/members", async (req, res) => {
   try {
+    log('GET /api/members');
     if (!pool) return res.json([]);
     const r = await pool.query('SELECT id, nickname, avatar, pubg_id as "pubgId", stats, scope FROM members ORDER BY nickname ASC');
     res.json(r.rows);
@@ -83,6 +92,7 @@ app.get("/api/members", async (req, res) => {
 });
 app.post("/api/members", requireAdmin, async (req, res) => {
   try {
+    log('POST /api/members', req.body);
     if (!pool) return res.status(500).json({ error: 'DB not configured' });
     const id = String(Date.now());
     const { nickname, avatar, pubgId, stats = {}, scope = 'overall' } = req.body || {};
@@ -92,6 +102,7 @@ app.post("/api/members", requireAdmin, async (req, res) => {
 });
 app.put("/api/members/:id", requireAdmin, async (req, res) => {
   try {
+    log('PUT /api/members/:id', req.params.id, req.body);
     if (!pool) return res.status(500).json({ error: 'DB not configured' });
     const id = req.params.id;
     const { nickname, avatar, pubgId, stats = {}, scope } = req.body || {};
@@ -103,6 +114,7 @@ app.put("/api/members/:id", requireAdmin, async (req, res) => {
 });
 app.delete("/api/members/:id", requireAdmin, async (req, res) => {
   try {
+    log('DELETE /api/members/:id', req.params.id);
     if (!pool) return res.status(500).json({ error: 'DB not configured' });
     await pool.query('DELETE FROM members WHERE id=$1', [req.params.id]);
     res.status(204).end();
@@ -112,6 +124,7 @@ app.delete("/api/members/:id", requireAdmin, async (req, res) => {
 // News CRUD (DB)
 app.get("/api/news", async (req, res) => {
   try {
+    log('GET /api/news');
     if (!pool) return res.json([]);
     const r = await pool.query('SELECT id, title, description as "desc", thumb, source, url FROM news ORDER BY id DESC');
     res.json(r.rows);
@@ -119,6 +132,7 @@ app.get("/api/news", async (req, res) => {
 });
 app.post("/api/news", requireAdmin, async (req, res) => {
   try {
+    log('POST /api/news', req.body);
     if (!pool) return res.status(500).json({ error: 'DB not configured' });
     const id = Date.now();
     const { title, desc, description, thumb, source, url } = req.body || {};
@@ -129,6 +143,7 @@ app.post("/api/news", requireAdmin, async (req, res) => {
 });
 app.put("/api/news/:id", requireAdmin, async (req, res) => {
   try {
+    log('PUT /api/news/:id', req.params.id, req.body);
     if (!pool) return res.status(500).json({ error: 'DB not configured' });
     const id = Number(req.params.id);
     const { title, desc, description, thumb, source, url } = req.body || {};
@@ -141,6 +156,7 @@ app.put("/api/news/:id", requireAdmin, async (req, res) => {
 });
 app.delete("/api/news/:id", requireAdmin, async (req, res) => {
   try {
+    log('DELETE /api/news/:id', req.params.id);
     if (!pool) return res.status(500).json({ error: 'DB not configured' });
     await pool.query('DELETE FROM news WHERE id=$1', [Number(req.params.id)]);
     res.status(204).end();
@@ -153,7 +169,11 @@ const PUBG_REGION = process.env.PUBG_REGION || process.env.PUBG_PLATFORM || "ste
 const PUBG_BASE = `https://api.pubg.com/shards/${PUBG_REGION}`;
 
 async function pubgFetch(pathname) {
-  if (!PUBG_API_KEY) throw new Error("PUBG_API_KEY missing");
+  if (!PUBG_API_KEY) {
+    log('PUBG key missing');
+    throw new Error("PUBG_API_KEY missing");
+  }
+  log('PUBG fetch', pathname);
   const res = await fetch(`${PUBG_BASE}${pathname}`, {
     headers: {
       Authorization: `Bearer ${PUBG_API_KEY}`,
@@ -171,6 +191,7 @@ async function pubgFetch(pathname) {
 // Resolve player by name -> { id, name }
 app.get("/api/pubg/player/:name", async (req, res) => {
   try {
+    log('PUBG player lookup', req.params.name);
     const q = encodeURIComponent(req.params.name);
     const r = await pubgFetch(`/players?filter[playerNames]=${q}`);
     if (!r.ok) return res.status(r.status).send(r.body);
@@ -184,6 +205,7 @@ app.get("/api/pubg/player/:name", async (req, res) => {
 // Season stats current -> simplified shape
 app.get("/api/pubg/stats/:playerId", async (req, res) => {
   try {
+    log('PUBG stats get', req.params.playerId);
     const seasonId = "latest"; // PUBG supports /seasons?filter[seasonType]=official; mapping simplified
     const id = req.params.playerId;
     const r = await pubgFetch(`/players/${id}/seasons/${seasonId}`);
@@ -207,6 +229,9 @@ app.get('/api/youtube/oembed', async (req, res) => {
   try {
     const key = process.env.YOUTUBE_API_KEY;
     const url = req.query.url || '';
+    log('YouTube oembed', { url, hasKey: !!key });
+    const key = process.env.YOUTUBE_API_KEY;
+    const url = req.query.url || '';
     if (!key) return res.status(500).json({ error: 'YOUTUBE_API_KEY missing' });
     const idMatch = /(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{6,})/.exec(url);
     const videoId = idMatch && idMatch[1];
@@ -224,7 +249,7 @@ app.get('/api/youtube/oembed', async (req, res) => {
       url,
       provider: 'youtube'
     });
-  } catch (e) { res.status(500).json({ error: 'YouTube fetch failed' }); }
+  } catch (e) { log('YouTube error', e && e.message); res.status(500).json({ error: 'YouTube fetch failed' }); }
 });
 
 // Twitch helper: get app access token, then basic metadata for a channel or video
@@ -238,6 +263,8 @@ async function twitchToken() {
 }
 app.get('/api/twitch/oembed', async (req, res) => {
   try {
+    const url = req.query.url || '';
+    log('Twitch oembed', { url });
     const url = req.query.url || '';
     const auth = await twitchToken();
     if (!auth) return res.status(500).json({ error: 'Twitch credentials missing' });
@@ -260,7 +287,7 @@ app.get('/api/twitch/oembed', async (req, res) => {
     }
     if (!meta) return res.status(400).json({ error: 'Unsupported Twitch URL' });
     res.json({ ...meta, url, provider: 'twitch' });
-  } catch (e) { res.status(500).json({ error: 'Twitch fetch failed' }); }
+  } catch (e) { log('Twitch error', e && e.message); res.status(500).json({ error: 'Twitch fetch failed' }); }
 });
 
 // Discord placeholder
@@ -273,6 +300,7 @@ app.get("/api/status", (req, res) => {
 });
 
 app.get('/admin', (req, res) => {
+  log('serve /admin');
   res.sendFile(path.join(__dirname, '../admin.html'));
 });
 
