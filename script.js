@@ -195,64 +195,15 @@ function initSorting() {
 
 // Admin features are moved to /admin (admin.js). No admin UI on public page.
 function initAdmin() {}
-
 function initAdminTabs() {}
-
 function paintAdminData() {}
-
-// Add member
 function initMemberActions() {}
-
-// Add post
 function openMemberModal() {}
 
 // No live refetch on public page
 function refetchMemberStats() {}
 
 function initPostActions() {}
-    const url = $('#postUrl').value.trim();
-    const titleManual = $('#postTitle').value.trim();
-    const thumbManual = $('#postThumb').value.trim();
-    const source = $('#postSource').value;
-
-    // If URL provided and matches source, try to auto-fetch metadata via configured proxy
-    let title = titleManual;
-    let desc = 'New update';
-    let thumb = thumbManual || '';
-
-    if (url) {
-      try {
-        // Optional: auto metadata can be implemented server-side later
-      } catch (e) { console.warn('Meta fetch failed', e); }
-    }
-
-    if (!title) title = source === 'youtube' && url ? 'YouTube Post' : (source === 'twitch' && url ? 'Twitch Post' : 'Clan Update');
-    if (!thumb) thumb = 'https://picsum.photos/800/450';
-
-    ensureAdminToken();
-    await fetch('/api/news', withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, desc, thumb, source, url }) }));
-    $('#postUrl').value = ''; $('#postTitle').value = ''; $('#postThumb').value = '';
-    await loadAllAndRender();
-  });
-
-  $('#adminNewsList').addEventListener('click', (e) => {
-    const eIdx = e.target.getAttribute('data-edit-news');
-    const dIdx = e.target.getAttribute('data-del-news');
-    if (eIdx !== null) {
-      const n = newsItems[+eIdx];
-      const newTitle = prompt('New title', n.title) ?? n.title;
-      ensureAdminToken();
-      await fetch(`/api/news/${encodeURIComponent(n.id)}`, withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...n, title: newTitle }) }));
-      await loadAllAndRender();
-    }
-    if (dIdx !== null) {
-      const n = newsItems[+dIdx];
-      ensureAdminToken();
-      await fetch(`/api/news/${encodeURIComponent(n.id)}`, withAuth({ method: 'DELETE' }));
-      await loadAllAndRender();
-    }
-  });
-}
 
 // Theme apply
 function persistState() {
