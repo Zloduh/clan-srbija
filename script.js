@@ -195,183 +195,18 @@ function initSorting() {
   $('#playerSearch').addEventListener('input', renderLeaderboard);
 }
 
-// Admin panel UI
-function initAdmin() {
-  // Replace mock auth with token-based auth via sessionStorage
-  const existing = sessionStorage.getItem('srbija_admin_token');
-  if (existing) {
-    adminBearer = existing;
-    $('#adminLogin').hidden = true;
-    $('#adminDashboard').hidden = false;
-    paintAdminData();
-    initAdminTabs();
-  }
-  const loginBtn = $('#adminLoginBtn');
-  loginBtn.addEventListener('click', async () => {
-    const token = $('#adminPass').value.trim(); // reuse password field as token input
-    if (!token) { alert('Enter Admin API Token'); return; }
-    adminBearer = token;
-    const r = await fetch('/api/auth/check', withAuth());
-    if (r.status === 204) {
-      sessionStorage.setItem('srbija_admin_token', adminBearer);
-      $('#adminLogin').hidden = true;
-      $('#adminDashboard').hidden = false;
-      paintAdminData();
-      initAdminTabs();
-    } else {
-      adminBearer = '';
-      alert('Invalid token');
-    }
-  });
-  // Add logout if button exists
-  const logoutBtn = document.getElementById('adminLogout');
-  if (logoutBtn) logoutBtn.addEventListener('click', () => {
-    adminBearer = '';
-    sessionStorage.removeItem('srbija_admin_token');
-    $('#adminDashboard').hidden = true;
-    $('#adminLogin').hidden = false;
-  });
-}
+// Admin features are moved to /admin (admin.js). No admin UI on public page.
+function initAdmin() {}
 
-function initAdminTabs() {
-  const tabs = document.querySelectorAll('.admin-tab');
-  tabs.forEach(tab => tab.addEventListener('click', () => {
-    tabs.forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    const target = tab.getAttribute('data-tab');
-    document.querySelectorAll('.admin-pane').forEach(p => {
-      p.hidden = p.id !== target;
-    });
-  }));
-}
+function initAdminTabs() {}
 
-function paintAdminData() {
-  // Members list
-  const wrap = $('#membersList');
-  wrap.innerHTML = '';
-  members.forEach((m, idx) => {
-    const item = document.createElement('div');
-    item.className = 'list-item';
-    item.innerHTML = `
-      <div><strong>${m.nickname}</strong> <span class="muted">(${m.pubgId})</span></div>
-      <div class="actions">
-        <button class="btn btn-sm" data-edit="${idx}">Edit</button>
-        <button class="btn btn-sm" data-del="${idx}">Delete</button>
-      </div>
-    `;
-    wrap.appendChild(item);
-  });
-
-  // News list
-  const newsWrap = $('#adminNewsList');
-  newsWrap.innerHTML = '';
-  mockNews.forEach((n, idx) => {
-    const item = document.createElement('div');
-    item.className = 'list-item';
-    item.innerHTML = `
-      <div><strong>${n.title}</strong> <span class="muted">(${n.source})</span></div>
-      <div class="actions">
-        <button class="btn btn-sm" data-edit-news="${idx}">Edit</button>
-        <button class="btn btn-sm" data-del-news="${idx}">Delete</button>
-      </div>
-    `;
-    newsWrap.appendChild(item);
-  });
-
-  // Stat toggles
-  $$('.stat-toggle').forEach(cb => {
-    cb.checked = !!state.visibleStats[cb.dataset.stat];
-    cb.onchange = () => {
-      state.visibleStats[cb.dataset.stat] = cb.checked;
-      applyStatVisibility();
-    };
-  });
-
-  // Theme values
-  $('#colorPrimary').value = state.theme.primary;
-  $('#colorSecondary').value = state.theme.secondary;
-  $('#colorAccent').value = state.theme.accent;
-  $('#colorBg').value = state.theme.bg;
-  $('#logoUrl').value = state.theme.logo;
-  $('#bgUrl').value = state.theme.background;
-  $('#discordInvite').value = state.config.discord;
-}
+function paintAdminData() {}
 
 // Add member
-function withAuth(init = {}) {
-  const headers = new Headers(init.headers || {});
-  if (adminBearer) headers.set('Authorization', 'Bearer ' + adminBearer);
-  return { ...init, headers };
-}
-
-function ensureAdminToken() {
-  if (!adminBearer) {
-    const t = window.prompt('Enter admin API token');
-    if (t) adminBearer = t.trim();
-  }
-}
-
-function initMemberActions() {
-  $('#addMember').addEventListener('click', () => {
-    const nick = $('#memberNickname').value.trim();
-    const avatar = $('#memberAvatar').value.trim() || 'https://i.pravatar.cc/128';
-    const id = $('#memberPUBGId').value.trim() || 'unknown';
-    if (!nick) return alert('Nickname required');
-    ensureAdminToken();
-    fetch(`/api/members`, withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: nick, avatar, pubgId: id, stats: { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 } }) }))
-      .then(r => { if (r.status === 401) { adminBearer=''; alert('Unauthorized'); } return loadAllAndRender(); });
-    $('#memberNickname').value = '';
-    $('#memberAvatar').value = '';
-    $('#memberPUBGId').value = '';
-  });
-
-  // delegated edit/delete for members
-  $('#membersList').addEventListener('click', (e) => {
-    const editIdx = e.target.getAttribute('data-edit');
-    const delIdx = e.target.getAttribute('data-del');
-    if (editIdx !== null) {
-      openMemberModal(+editIdx);
-    }
-    if (delIdx !== null) {
-      const id = members[+delIdx]?.id;
-      if (!id) return;
-      ensureAdminToken();
-      fetch(`/api/members/${encodeURIComponent(id)}`, withAuth({ method: 'DELETE' }))
-        .then(r => { if (r.status === 401) { adminBearer=''; alert('Unauthorized'); } return loadAllAndRender(); });
-    }
-  });
-}
+function initMemberActions() {}
 
 // Add post
-function openMemberModal(idx) {
-  const m = members[idx];
-  if (!m) return;
-  const modal = document.getElementById('memberModal');
-  document.getElementById('editNickname').value = m.nickname || '';
-  document.getElementById('editAvatar').value = m.avatar || '';
-  document.getElementById('editPubgId').value = m.pubgId || '';
-  modal.hidden = false;
-  const close = () => { modal.hidden = true; cleanup(); };
-  const cleanup = () => {
-    document.getElementById('memberSave').onclick = null;
-    document.getElementById('memberCancel').onclick = null;
-    document.getElementById('memberModalClose').onclick = null;
-  };
-  document.getElementById('memberCancel').onclick = close;
-  document.getElementById('memberModalClose').onclick = close;
-  document.getElementById('memberSave').onclick = async () => {
-    const newNick = document.getElementById('editNickname').value.trim();
-    const newAvatar = document.getElementById('editAvatar').value.trim();
-    const newPubg = document.getElementById('editPubgId').value.trim();
-    const pubgChanged = newPubg && newPubg !== m.pubgId;
-    const updated = { ...m, nickname: newNick || m.nickname, avatar: newAvatar || m.avatar, pubgId: newPubg || m.pubgId };
-    ensureAdminToken();
-    await fetch(`/api/members/${encodeURIComponent(m.id)}`, withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) }));
-    if (pubgChanged) { await refetchMemberStats(updated); }
-    await loadAllAndRender();
-    close();
-  };
-}
+function openMemberModal() {}
 
 async function refetchMemberStats(member) {
   try {
@@ -390,8 +225,7 @@ async function refetchMemberStats(member) {
   } catch (e) { console.warn('Refetch member stats failed', e); }
 }
 
-function initPostActions() {
-  $('#addPost').addEventListener('click', async () => {
+function initPostActions() {}
     const url = $('#postUrl').value.trim();
     const titleManual = $('#postTitle').value.trim();
     const thumbManual = $('#postThumb').value.trim();
@@ -449,7 +283,6 @@ async function loadAllAndRender() {
   renderNews();
   renderRoster();
   renderLeaderboard();
-  paintAdminData();
   applyStatVisibility();
 }
 function loadState() {
@@ -557,21 +390,7 @@ async function fetchPubgRecent(playerId, limit=20) {
 }
 
 async function refreshLiveStats() {
-  await Promise.allSettled(members.map(async m => {
-    try {
-      const idInfo = await fetchPubgPlayerId(m.pubgId);
-      const season = await fetchPubgSeasonStats(idInfo.id);
-      m.stats = m.stats || {};
-      m.stats.matches = season.overall.matches;
-      m.stats.wins = season.overall.wins;
-      m.stats.kd = season.overall.kd;
-      m.stats.rank = m.stats.rank || 'Season';
-      m.stats.damage = season.overall.adr;
-      ensureAdminToken();
-      await fetch(`/api/members/${encodeURIComponent(m.id)}`, withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m) }));
-    } catch {}
-  }));
-  renderRoster(); renderLeaderboard();
+  // Optional: could fetch live stats and render only (no writes)
 }
 
 function initApiConfig() {
