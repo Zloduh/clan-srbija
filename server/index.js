@@ -6,27 +6,43 @@ import dotenv from "dotenv";
 import cors from "cors";
 import fs from "fs";
 // Use global fetch available in Node 18+
+import pkg from 'pg';
+const { Pool } = pkg;
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "data");
-const MEMBERS_FILE = path.join(DATA_DIR, "members.json");
-const NEWS_FILE = path.join(DATA_DIR, "news.json");
+// Database: Render PostgreSQL via DATABASE_URL
+const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
 
-function ensureDataFiles() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(MEMBERS_FILE)) fs.writeFileSync(MEMBERS_FILE, "[]", "utf-8");
-  if (!fs.existsSync(NEWS_FILE)) fs.writeFileSync(NEWS_FILE, "[]", "utf-8");
+async function dbInit() {
+  if (!pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS members (
+      id TEXT PRIMARY KEY,
+      nickname TEXT NOT NULL,
+      avatar TEXT,
+      pubg_id TEXT,
+      stats JSONB DEFAULT '{}'::jsonb,
+      scope TEXT
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS news (
+      id BIGINT PRIMARY KEY,
+      title TEXT NOT NULL,
+      desc TEXT,
+      thumb TEXT,
+      source TEXT,
+      url TEXT
+    );
+  `);
 }
-function readJson(fp) {
-  try { return JSON.parse(fs.readFileSync(fp, "utf-8")); } catch { return []; }
-}
-function writeJson(fp, obj) {
-  fs.writeFileSync(fp, JSON.stringify(obj, null, 2));
-}
-ensureDataFiles();
+await dbInit().catch(err => console.error('DB init failed', err));
+
+// JSON file fallback removed in favor of DB
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,60 +68,76 @@ function requireAdmin(req, res, next) {
   return res.status(401).json({ error: "Unauthorized" });
 }
 
-// Members CRUD
-app.get("/api/members", (req, res) => {
-  const data = readJson(MEMBERS_FILE);
-  res.json(data);
+// Members CRUD (DB)
+app.get("/api/members", async (req, res) => {
+  try {
+    if (!pool) return res.json([]);
+    const r = await pool.query('SELECT id, nickname, avatar, pubg_id as "pubgId", stats, scope FROM members ORDER BY nickname ASC');
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
-app.post("/api/members", requireAdmin, (req, res) => {
-  const data = readJson(MEMBERS_FILE);
-  const item = { id: String(Date.now()), ...req.body };
-  data.unshift(item);
-  writeJson(MEMBERS_FILE, data);
-  res.status(201).json(item);
+app.post("/api/members", requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    const id = String(Date.now());
+    const { nickname, avatar, pubgId, stats = {}, scope = 'overall' } = req.body || {};
+    await pool.query('INSERT INTO members (id, nickname, avatar, pubg_id, stats, scope) VALUES ($1,$2,$3,$4,$5::jsonb,$6)', [id, nickname, avatar, pubgId, JSON.stringify(stats), scope]);
+    res.status(201).json({ id, nickname, avatar, pubgId, stats, scope });
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
-app.put("/api/members/:id", requireAdmin, (req, res) => {
-  const data = readJson(MEMBERS_FILE);
-  const idx = data.findIndex(m => m.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  data[idx] = { ...data[idx], ...req.body, id: data[idx].id };
-  writeJson(MEMBERS_FILE, data);
-  res.json(data[idx]);
+app.put("/api/members/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    const id = req.params.id;
+    const { nickname, avatar, pubgId, stats = {}, scope } = req.body || {};
+    await pool.query('UPDATE members SET nickname=COALESCE($2,nickname), avatar=COALESCE($3,avatar), pubg_id=COALESCE($4,pubg_id), stats=COALESCE($5::jsonb,stats), scope=COALESCE($6,scope) WHERE id=$1', [id, nickname, avatar, pubgId, JSON.stringify(stats), scope]);
+    const r = await pool.query('SELECT id, nickname, avatar, pubg_id as "pubgId", stats, scope FROM members WHERE id=$1', [id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
-app.delete("/api/members/:id", requireAdmin, (req, res) => {
-  const data = readJson(MEMBERS_FILE);
-  const next = data.filter(m => m.id !== req.params.id);
-  writeJson(MEMBERS_FILE, next);
-  res.status(204).end();
+app.delete("/api/members/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    await pool.query('DELETE FROM members WHERE id=$1', [req.params.id]);
+    res.status(204).end();
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
 
-// News CRUD
-app.get("/api/news", (req, res) => {
-  const data = readJson(NEWS_FILE);
-  res.json(data);
+// News CRUD (DB)
+app.get("/api/news", async (req, res) => {
+  try {
+    if (!pool) return res.json([]);
+    const r = await pool.query('SELECT id, title, desc, thumb, source, url FROM news ORDER BY id DESC');
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
-app.post("/api/news", requireAdmin, (req, res) => {
-  const data = readJson(NEWS_FILE);
-  const item = { id: Date.now(), ...req.body };
-  data.unshift(item);
-  writeJson(NEWS_FILE, data);
-  res.status(201).json(item);
+app.post("/api/news", requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    const id = Date.now();
+    const { title, desc, thumb, source, url } = req.body || {};
+    await pool.query('INSERT INTO news (id, title, desc, thumb, source, url) VALUES ($1,$2,$3,$4,$5,$6)', [id, title, desc, thumb, source, url]);
+    res.status(201).json({ id, title, desc, thumb, source, url });
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
-app.put("/api/news/:id", requireAdmin, (req, res) => {
-  const data = readJson(NEWS_FILE);
-  const id = Number(req.params.id);
-  const idx = data.findIndex(n => n.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  data[idx] = { ...data[idx], ...req.body, id };
-  writeJson(NEWS_FILE, data);
-  res.json(data[idx]);
+app.put("/api/news/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    const id = Number(req.params.id);
+    const { title, desc, thumb, source, url } = req.body || {};
+    await pool.query('UPDATE news SET title=COALESCE($2,title), desc=COALESCE($3,desc), thumb=COALESCE($4,thumb), source=COALESCE($5,source), url=COALESCE($6,url) WHERE id=$1', [id, title, desc, thumb, source, url]);
+    const r = await pool.query('SELECT id, title, desc, thumb, source, url FROM news WHERE id=$1', [id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
-app.delete("/api/news/:id", requireAdmin, (req, res) => {
-  const data = readJson(NEWS_FILE);
-  const id = Number(req.params.id);
-  const next = data.filter(n => n.id !== id);
-  writeJson(NEWS_FILE, next);
-  res.status(204).end();
+app.delete("/api/news/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'DB not configured' });
+    await pool.query('DELETE FROM news WHERE id=$1', [Number(req.params.id)]);
+    res.status(204).end();
+  } catch (e) { res.status(500).json({ error: 'DB error' }); }
 });
 
 // PUBG proxy endpoints

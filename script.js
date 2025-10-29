@@ -10,6 +10,7 @@ const ENV = {
 // Persistent data stores (localStorage for now)
 let newsItems = [];
 let members = [];
+let adminBearer = '';
 
 // Mock config (site + visible stats)
 const state = {
@@ -277,14 +278,28 @@ function paintAdminData() {
 }
 
 // Add member
+function withAuth(init = {}) {
+  const headers = new Headers(init.headers || {});
+  if (adminBearer) headers.set('Authorization', 'Bearer ' + adminBearer);
+  return { ...init, headers };
+}
+
+function ensureAdminToken() {
+  if (!adminBearer) {
+    const t = window.prompt('Enter admin API token');
+    if (t) adminBearer = t.trim();
+  }
+}
+
 function initMemberActions() {
   $('#addMember').addEventListener('click', () => {
     const nick = $('#memberNickname').value.trim();
     const avatar = $('#memberAvatar').value.trim() || 'https://i.pravatar.cc/128';
     const id = $('#memberPUBGId').value.trim() || 'unknown';
     if (!nick) return alert('Nickname required');
-    fetch(`/api/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: nick, avatar, pubgId: id, stats: { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 } }) })
-      .then(() => loadAllAndRender());
+    ensureAdminToken();
+    fetch(`/api/members`, withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: nick, avatar, pubgId: id, stats: { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 } }) }))
+      .then(r => { if (r.status === 401) { adminBearer=''; alert('Unauthorized'); } return loadAllAndRender(); });
     $('#memberNickname').value = '';
     $('#memberAvatar').value = '';
     $('#memberPUBGId').value = '';
@@ -300,8 +315,9 @@ function initMemberActions() {
     if (delIdx !== null) {
       const id = members[+delIdx]?.id;
       if (!id) return;
-      fetch(`/api/members/${encodeURIComponent(id)}`, { method: 'DELETE' })
-        .then(() => loadAllAndRender());
+      ensureAdminToken();
+      fetch(`/api/members/${encodeURIComponent(id)}`, withAuth({ method: 'DELETE' }))
+        .then(r => { if (r.status === 401) { adminBearer=''; alert('Unauthorized'); } return loadAllAndRender(); });
     }
   });
 }
@@ -329,7 +345,8 @@ function openMemberModal(idx) {
     const newPubg = document.getElementById('editPubgId').value.trim();
     const pubgChanged = newPubg && newPubg !== m.pubgId;
     const updated = { ...m, nickname: newNick || m.nickname, avatar: newAvatar || m.avatar, pubgId: newPubg || m.pubgId };
-    await fetch(`/api/members/${encodeURIComponent(m.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+    ensureAdminToken();
+    await fetch(`/api/members/${encodeURIComponent(m.id)}`, withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) }));
     if (pubgChanged) { await refetchMemberStats(updated); }
     await loadAllAndRender();
     close();
@@ -374,7 +391,8 @@ function initPostActions() {
     if (!title) title = source === 'youtube' && url ? 'YouTube Post' : (source === 'twitch' && url ? 'Twitch Post' : 'Clan Update');
     if (!thumb) thumb = 'https://picsum.photos/800/450';
 
-    await fetch('/api/news', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, desc, thumb, source, url }) });
+    ensureAdminToken();
+    await fetch('/api/news', withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, desc, thumb, source, url }) }));
     $('#postUrl').value = ''; $('#postTitle').value = ''; $('#postThumb').value = '';
     await loadAllAndRender();
   });
@@ -385,12 +403,14 @@ function initPostActions() {
     if (eIdx !== null) {
       const n = newsItems[+eIdx];
       const newTitle = prompt('New title', n.title) ?? n.title;
-      await fetch(`/api/news/${encodeURIComponent(n.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...n, title: newTitle }) });
+      ensureAdminToken();
+      await fetch(`/api/news/${encodeURIComponent(n.id)}`, withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...n, title: newTitle }) }));
       await loadAllAndRender();
     }
     if (dIdx !== null) {
       const n = newsItems[+dIdx];
-      await fetch(`/api/news/${encodeURIComponent(n.id)}`, { method: 'DELETE' });
+      ensureAdminToken();
+      await fetch(`/api/news/${encodeURIComponent(n.id)}`, withAuth({ method: 'DELETE' }));
       await loadAllAndRender();
     }
   });
@@ -527,7 +547,8 @@ async function refreshLiveStats() {
       m.stats.kd = season.overall.kd;
       m.stats.rank = m.stats.rank || 'Season';
       m.stats.damage = season.overall.adr;
-      await fetch(`/api/members/${encodeURIComponent(m.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m) });
+      ensureAdminToken();
+      await fetch(`/api/members/${encodeURIComponent(m.id)}`, withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m) }));
     } catch {}
   }));
   renderRoster(); renderLeaderboard();
