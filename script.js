@@ -25,7 +25,7 @@ const state = {
   visibleStats: { matches: true, wins: true, kd: true, rank: true, damage: true },
   theme: {
     primary: '#c1121f', secondary: '#0033a0', accent: '#ffffff', bg: '#0b0d12',
-    logo: 'assets/logo-placeholder.png',
+    logo: 'assets/logo.svg',
     background: 'assets/bg-placeholder.jpg'
   },
   auth: { loggedIn: false }
