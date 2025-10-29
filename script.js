@@ -1,15 +1,15 @@
 // SRBIJA PUBG Clan - Frontend logic
-// All dynamic content uses mock JSON for easy future API integration.
+// Production-backed: all dynamic content fetched from server APIs. No client-side storage.
 
 // Environment-aware defaults
 const ENV = {
   mode: (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'development' : 'production',
-  apiBase: (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8787' : 'https://api.your-domain.com'
+  apiBase: ''
 };
 
 // Persistent data stores (localStorage for now)
-let mockNews = [];
-let mockMembers = [];
+let newsItems = [];
+let members = [];
 
 // Mock config (site + visible stats)
 const state = {
@@ -18,13 +18,7 @@ const state = {
     youtube: '#',
     twitch: '#',
   },
-  api: {
-    pubgUrl: '', pubgKey: '',
-    discordUrl: '',
-    youtubeUrl: '', youtubeKey: '',
-    twitchUrl: '', twitchClientId: '', twitchClientSecret: ''
-  },
-  visibleStats: { matches: true, wins: true, kd: true, rank: true, damage: true },
+    visibleStats: { matches: true, wins: true, kd: true, rank: true, damage: true },
   theme: {
     primary: '#c1121f', secondary: '#0033a0', accent: '#ffffff', bg: '#0b0d12',
     logo: 'assets/logo-placeholder.png',
@@ -65,7 +59,7 @@ function initBurger() {
 function renderNews(limit = 6) {
   const grid = $('#newsFeed');
   grid.innerHTML = '';
-  mockNews.slice(0, limit).forEach(post => {
+  newsItems.slice(0, limit).forEach(post => {
     const card = document.createElement('article');
     card.className = 'news-card';
     const linkStart = post.url ? `<a href="${post.url}" target="_blank" rel="noopener">` : '';
@@ -89,7 +83,7 @@ function initViewMore() {
   const close = $('#modalClose');
   btn.addEventListener('click', () => {
     body.innerHTML = '';
-    mockNews.forEach(post => {
+    newsItems.forEach(post => {
       const row = document.createElement('div');
       row.className = 'list-item';
       row.innerHTML = `
@@ -111,7 +105,7 @@ function initViewMore() {
 function renderRoster() {
   const grid = $('#rosterGrid');
   grid.innerHTML = '';
-  mockMembers.forEach(m => {
+  members.forEach(m => {
     const card = document.createElement('article');
     card.className = 'player-card';
     const scope = m.scope || 'overall';
@@ -167,7 +161,7 @@ let sortState = { key: 'wins', dir: 'desc' };
 function renderLeaderboard() {
   const tbody = $('#leaderboard tbody');
   const search = $('#playerSearch').value.trim().toLowerCase();
-  let rows = [...mockMembers];
+  let rows = [...members];
   if (search) rows = rows.filter(m => m.nickname.toLowerCase().includes(search));
   rows.sort((a,b) => {
     const key = sortState.key;
@@ -234,7 +228,7 @@ function paintAdminData() {
   // Members list
   const wrap = $('#membersList');
   wrap.innerHTML = '';
-  mockMembers.forEach((m, idx) => {
+  members.forEach((m, idx) => {
     const item = document.createElement('div');
     item.className = 'list-item';
     item.innerHTML = `
@@ -289,14 +283,11 @@ function initMemberActions() {
     const avatar = $('#memberAvatar').value.trim() || 'https://i.pravatar.cc/128';
     const id = $('#memberPUBGId').value.trim() || 'unknown';
     if (!nick) return alert('Nickname required');
-    mockMembers.push({ id: String(Date.now()), nickname: nick, avatar, pubgId: id, stats: { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 } });
+    fetch(`/api/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: nick, avatar, pubgId: id, stats: { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 } }) })
+      .then(() => loadAllAndRender());
     $('#memberNickname').value = '';
     $('#memberAvatar').value = '';
     $('#memberPUBGId').value = '';
-    persistDataStores();
-    renderRoster();
-    renderLeaderboard();
-    paintAdminData();
   });
 
   // delegated edit/delete for members
@@ -307,16 +298,17 @@ function initMemberActions() {
       openMemberModal(+editIdx);
     }
     if (delIdx !== null) {
-      mockMembers.splice(+delIdx, 1);
-      persistDataStores();
-      renderRoster(); renderLeaderboard(); paintAdminData();
+      const id = members[+delIdx]?.id;
+      if (!id) return;
+      fetch(`/api/members/${encodeURIComponent(id)}`, { method: 'DELETE' })
+        .then(() => loadAllAndRender());
     }
   });
 }
 
 // Add post
 function openMemberModal(idx) {
-  const m = mockMembers[idx];
+  const m = members[idx];
   if (!m) return;
   const modal = document.getElementById('memberModal');
   document.getElementById('editNickname').value = m.nickname || '';
@@ -336,12 +328,10 @@ function openMemberModal(idx) {
     const newAvatar = document.getElementById('editAvatar').value.trim();
     const newPubg = document.getElementById('editPubgId').value.trim();
     const pubgChanged = newPubg && newPubg !== m.pubgId;
-    mockMembers[idx] = { ...m, nickname: newNick || m.nickname, avatar: newAvatar || m.avatar, pubgId: newPubg || m.pubgId };
-    persistDataStores();
-    if (pubgChanged && state.api.pubgUrl) {
-      await refetchMemberStats(mockMembers[idx]);
-    }
-    renderRoster(); renderLeaderboard(); paintAdminData();
+    const updated = { ...m, nickname: newNick || m.nickname, avatar: newAvatar || m.avatar, pubgId: newPubg || m.pubgId };
+    await fetch(`/api/members/${encodeURIComponent(m.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+    if (pubgChanged) { await refetchMemberStats(updated); }
+    await loadAllAndRender();
     close();
   };
 }
@@ -377,90 +367,53 @@ function initPostActions() {
 
     if (url) {
       try {
-        if (source === 'youtube' && state.api.youtubeUrl) {
-          const res = await fetch(`${state.api.youtubeUrl}/oembed?url=${encodeURIComponent(url)}`);
-          if (res.ok) {
-            const data = await res.json();
-            title = title || data.title || '';
-            desc = data.author_name ? `by ${data.author_name}` : desc;
-            thumb = thumb || (data.thumbnail_url || '');
-          }
-        } else if (source === 'twitch' && state.api.twitchUrl) {
-          const res = await fetch(`${state.api.twitchUrl}/oembed?url=${encodeURIComponent(url)}`);
-          if (res.ok) {
-            const data = await res.json();
-            title = title || data.title || '';
-            desc = data.author_name ? `by ${data.author_name}` : desc;
-            thumb = thumb || (data.thumbnail_url || '');
-          }
-        } else if (source === 'discord' && state.api.discordUrl) {
-          const res = await fetch(`${state.api.discordUrl}/resolve?url=${encodeURIComponent(url)}`);
-          if (res.ok) {
-            const data = await res.json();
-            title = title || data.title || '';
-            desc = data.description || desc;
-            thumb = thumb || (data.thumbnail || '');
-          }
-        }
-      } catch (e) {
-        console.warn('Meta fetch failed, using manual/mocks.', e);
-      }
+        // Optional: auto metadata can be implemented server-side later
+      } catch (e) { console.warn('Meta fetch failed', e); }
     }
 
     if (!title) title = source === 'youtube' && url ? 'YouTube Post' : (source === 'twitch' && url ? 'Twitch Post' : 'Clan Update');
     if (!thumb) thumb = 'https://picsum.photos/800/450';
 
-    mockNews.unshift({ id: Date.now(), title, desc, thumb, source, url });
-    persistDataStores();
+    await fetch('/api/news', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, desc, thumb, source, url }) });
     $('#postUrl').value = ''; $('#postTitle').value = ''; $('#postThumb').value = '';
-    renderNews(); paintAdminData();
+    await loadAllAndRender();
   });
 
   $('#adminNewsList').addEventListener('click', (e) => {
     const eIdx = e.target.getAttribute('data-edit-news');
     const dIdx = e.target.getAttribute('data-del-news');
     if (eIdx !== null) {
-      const n = mockNews[+eIdx];
+      const n = newsItems[+eIdx];
       const newTitle = prompt('New title', n.title) ?? n.title;
-      mockNews[+eIdx] = { ...n, title: newTitle };
-      persistDataStores();
-      renderNews(); paintAdminData();
+      await fetch(`/api/news/${encodeURIComponent(n.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...n, title: newTitle }) });
+      await loadAllAndRender();
     }
     if (dIdx !== null) {
-      mockNews.splice(+dIdx, 1);
-      persistDataStores();
-      renderNews(); paintAdminData();
+      const n = newsItems[+dIdx];
+      await fetch(`/api/news/${encodeURIComponent(n.id)}`, { method: 'DELETE' });
+      await loadAllAndRender();
     }
   });
 }
 
 // Theme apply
 function persistState() {
-  localStorage.setItem('srbija_state', JSON.stringify(state));
+  // no-op for now
 }
-function persistDataStores() {
-  localStorage.setItem('srbija_news', JSON.stringify(mockNews));
-  localStorage.setItem('srbija_members', JSON.stringify(mockMembers));
+async function loadAllAndRender() {
+  const [newsRes, membersRes] = await Promise.all([
+    fetch('/api/news'), fetch('/api/members')
+  ]);
+  newsItems = await newsRes.json();
+  members = await membersRes.json();
+  renderNews();
+  renderRoster();
+  renderLeaderboard();
+  paintAdminData();
+  applyStatVisibility();
 }
 function loadState() {
-  try {
-    const raw = localStorage.getItem('srbija_state');
-    if (raw) {
-      const saved = JSON.parse(raw);
-      Object.assign(state.config, saved.config || {});
-      Object.assign(state.api, saved.api || {});
-      Object.assign(state.theme, saved.theme || {});
-      Object.assign(state.visibleStats, saved.visibleStats || {});
-    }
-    // Data stores
-    mockNews = JSON.parse(localStorage.getItem('srbija_news') || '[]');
-    mockMembers = JSON.parse(localStorage.getItem('srbija_members') || '[]');
-    // Prefill API bases if empty
-    state.api.youtubeUrl = state.api.youtubeUrl || (ENV.apiBase + '/youtube');
-    state.api.twitchUrl = state.api.twitchUrl || (ENV.apiBase + '/twitch');
-    state.api.discordUrl = state.api.discordUrl || (ENV.apiBase + '/discord');
-    state.api.pubgUrl = state.api.pubgUrl || (ENV.apiBase + '/pubg');
-  } catch {}
+  // no local storage load
 }
 
 function initThemeActions() {
@@ -547,14 +500,12 @@ function iconFor(source) {
 
 // PUBG integration adapters (optional)
 async function fetchPubgPlayerId(name) {
-  if (!state.api.pubgUrl) throw new Error('PUBG base URL not configured');
-  const res = await fetch(`${state.api.pubgUrl}/player/${encodeURIComponent(name)}`);
+  const res = await fetch(`/api/pubg/player/${encodeURIComponent(name)}`);
   if (!res.ok) throw new Error('Resolve failed');
   return res.json(); // { id, name }
 }
 async function fetchPubgSeasonStats(playerId) {
-  if (!state.api.pubgUrl) throw new Error('PUBG base URL not configured');
-  const res = await fetch(`${state.api.pubgUrl}/stats/${encodeURIComponent(playerId)}?season=current`);
+  const res = await fetch(`/api/pubg/stats/${encodeURIComponent(playerId)}`);
   if (!res.ok) throw new Error('Stats failed');
   return res.json(); // { season, overall, modes }
 }
@@ -565,21 +516,21 @@ async function fetchPubgRecent(playerId, limit=20) {
   return res.json(); // { count, kd, adr, winRate, top10Rate }
 }
 
-function enableLiveStatsIfConfigured() {
-  if (!state.api.pubgUrl) return; // keep mock
-  // Replace leaderboard and roster using live for players with pubgId
-  Promise.allSettled(mockMembers.map(async m => {
+async function refreshLiveStats() {
+  await Promise.allSettled(members.map(async m => {
     try {
       const idInfo = await fetchPubgPlayerId(m.pubgId);
       const season = await fetchPubgSeasonStats(idInfo.id);
-      // Map overall -> our placeholders
+      m.stats = m.stats || {};
       m.stats.matches = season.overall.matches;
       m.stats.wins = season.overall.wins;
       m.stats.kd = season.overall.kd;
       m.stats.rank = m.stats.rank || 'Season';
-      m.stats.damage = season.overall.adr; // using ADR for display
+      m.stats.damage = season.overall.adr;
+      await fetch(`/api/members/${encodeURIComponent(m.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m) });
     } catch {}
-  })).then(() => { renderRoster(); renderLeaderboard(); });
+  }));
+  renderRoster(); renderLeaderboard();
 }
 
 function initApiConfig() {
@@ -622,10 +573,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadState();
   enableSmoothScroll();
   initBurger();
-  renderNews();
   initViewMore();
-  renderRoster();
-  renderLeaderboard();
   initSorting();
   initAdmin();
   initMemberActions();
@@ -634,6 +582,6 @@ window.addEventListener('DOMContentLoaded', () => {
   initApiConfig();
   initSocialLinks();
   applyTheme();
-  applyStatVisibility();
-  enableLiveStatsIfConfigured();
+  applyTheme();
+  loadAllAndRender().then(() => refreshLiveStats());
 });
