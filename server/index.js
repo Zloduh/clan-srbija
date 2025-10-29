@@ -230,8 +230,6 @@ app.get('/api/youtube/oembed', async (req, res) => {
     const key = process.env.YOUTUBE_API_KEY;
     const url = req.query.url || '';
     log('YouTube oembed', { url, hasKey: !!key });
-    const key = process.env.YOUTUBE_API_KEY;
-    const url = req.query.url || '';
     if (!key) return res.status(500).json({ error: 'YOUTUBE_API_KEY missing' });
     const idMatch = /(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{6,})/.exec(url);
     const videoId = idMatch && idMatch[1];
@@ -265,7 +263,6 @@ app.get('/api/twitch/oembed', async (req, res) => {
   try {
     const url = req.query.url || '';
     log('Twitch oembed', { url });
-    const url = req.query.url || '';
     const auth = await twitchToken();
     if (!auth) return res.status(500).json({ error: 'Twitch credentials missing' });
     // Detect video vs channel

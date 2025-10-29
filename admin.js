@@ -38,46 +38,17 @@ async function loadAll() {
 function paintMembers() {
   const wrap = $('#membersList');
   wrap.innerHTML = '';
-  // Header actions
-  const tools = document.createElement('div');
-  tools.className = 'form-inline';
-  tools.style.marginBottom = '8px';
-  const refreshBtn = document.createElement('button');
-  refreshBtn.className = 'btn';
-  refreshBtn.textContent = 'Refresh Stats';
-  refreshBtn.id = 'refreshStatsAll';
-  tools.appendChild(refreshBtn);
-  wrap.appendChild(tools);
-
   members.forEach((m, idx) => {
     const item = document.createElement('div');
     item.className = 'list-item';
     item.innerHTML = `
       <div><strong>${m.nickname}</strong> <span class="muted">(${m.pubgId||'-'})</span></div>
       <div class="actions">
-        <button class="btn btn-sm" data-refresh="${idx}">Refresh</button>
         <button class="btn btn-sm" data-edit="${idx}">Edit</button>
         <button class="btn btn-sm" data-del="${idx}">Delete</button>
       </div>
     `;
     wrap.appendChild(item);
-  });
-
-  // Bind refresh actions
-  refreshBtn.addEventListener('click', async () => {
-    if (!members.length) return;
-    for (const m of members) {
-      if (!m.pubgId) continue;
-      await refreshOneMemberStats(m);
-    }
-    await loadAll();
-  });
-  wrap.addEventListener('click', async (e) => {
-    const rIdx = e.target.getAttribute('data-refresh');
-    if (rIdx !== null) {
-      const m = members[+rIdx];
-      if (m && m.pubgId) { await refreshOneMemberStats(m); await loadAll(); }
-    }
   });
 }
 
@@ -245,25 +216,6 @@ function initTabsWiring() {
   initTabs();
   bindMembers();
   bindNews();
-}
-
-async function refreshOneMemberStats(m) {
-  try {
-    const r1 = await fetch(`/api/pubg/player/${encodeURIComponent(m.pubgId)}`);
-    if (!r1.ok) return;
-    const idInfo = await r1.json();
-    const r2 = await fetch(`/api/pubg/stats/${encodeURIComponent(idInfo.id)}`);
-    if (!r2.ok) return;
-    const stats = await r2.json();
-    const next = { ...m, stats: {
-      matches: stats.overall?.matches || 0,
-      wins: stats.overall?.wins || 0,
-      kd: stats.overall?.kd || 0,
-      rank: m.stats?.rank || 'Season',
-      damage: stats.overall?.adr || 0
-    }};
-    await fetch(`/api/members/${encodeURIComponent(m.id)}`, withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) }));
-  } catch {}
 }
 
 window.addEventListener('DOMContentLoaded', () => {
