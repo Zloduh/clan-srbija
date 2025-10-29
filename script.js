@@ -226,6 +226,15 @@ async function fetchPubgSeasonStats(playerId) {
   if (!res.ok) throw new Error('Stats failed');
   return res.json();
 }
+function initSocialLinks() {
+  // Safe no-op fallback
+  document.querySelectorAll('.socials a, .footer .icon-btn').forEach(a => {
+    const t = a.title?.toLowerCase();
+    if (t === 'discord') a.href = state.config.discord;
+    if (t === 'youtube') a.href = state.config.youtube;
+    if (t === 'twitch') a.href = state.config.twitch;
+  });
+}
 
 // Boot
 window.addEventListener('DOMContentLoaded', () => {
