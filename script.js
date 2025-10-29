@@ -50,6 +50,32 @@ function enableSmoothScroll() {
   });
 }
 
+
+// UI helpers
+function showSpinner() {
+  if (document.getElementById('globalSpinner')) return;
+  const el = document.createElement('div');
+  el.id = 'globalSpinner';
+  el.style.position='fixed'; el.style.inset='0'; el.style.display='grid';
+  el.style.placeItems='center'; el.style.background='rgba(0,0,0,0.35)'; el.style.zIndex='9999';
+  el.innerHTML = '<div style="width:56px;height:56px;border:6px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>';
+  const style = document.createElement('style'); style.textContent='@keyframes spin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(style);
+  document.body.appendChild(el);
+}
+function hideSpinner(){ const el=document.getElementById('globalSpinner'); if(el) el.remove(); }
+
+function toast(msg, kind='error') {
+  const el=document.createElement('div');
+  el.textContent=msg;
+  el.style.position='fixed'; el.style.right='16px'; el.style.bottom='16px';
+  el.style.padding='10px 14px'; el.style.borderRadius='8px';
+  el.style.background= kind==='ok' ? 'rgba(0,160,80,0.9)' : 'rgba(200,40,40,0.9)';
+  el.style.color='#fff'; el.style.font='600 14px system-ui, sans-serif';
+  el.style.zIndex='10000'; el.style.boxShadow='0 8px 24px rgba(0,0,0,.3)';
+  document.body.appendChild(el); setTimeout(()=>el.remove(), 3500);
+}
+
 // Navbar burger
 function initBurger() {
   $('#burger').addEventListener('click', () => {
@@ -103,17 +129,30 @@ function initViewMore() {
   close.addEventListener('click', () => modal.hidden = true);
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
 }
-function applyStatVisibility() {
-  const v = state.visibleStats;
 
-  // Roster card stats
+function applyStatVisibility() {
+  // Auto-hide empty stats across table if all zeros/empty
+  const tb = document.querySelector('#leaderboard tbody');
+  const cells = (cls) => Array.from(document.querySelectorAll('#leaderboard tbody .' + cls)).map(td => (td.textContent||'').trim());
+  const allZero = (arr) => arr.length>0 && arr.every(v => v==='' || v==='0' || v==='0.0' || v==='0.00');
+  const auto = {
+    matches: allZero(cells('matches')),
+    wins: allZero(cells('wins')),
+    kd: allZero(cells('kd')),
+    rank: allZero(cells('rank')),
+    damage: false
+  };
+  const v = Object.assign({}, state.visibleStats);
+  Object.keys(auto).forEach(k => { if (auto[k]) v[k]=false; });
+
+  // roster stats blocks
   document.querySelectorAll('.stat-matches').forEach(el => el.style.display = v.matches ? '' : 'none');
   document.querySelectorAll('.stat-wins').forEach(el => el.style.display = v.wins ? '' : 'none');
   document.querySelectorAll('.stat-kd').forEach(el => el.style.display = v.kd ? '' : 'none');
   document.querySelectorAll('.stat-rank').forEach(el => el.style.display = v.rank ? '' : 'none');
   document.querySelectorAll('.stat-damage').forEach(el => el.style.display = v.damage ? '' : 'none');
 
-  // Leaderboard columns
+  // leaderboard headers
   const ths = {
     matches: document.querySelector('th[data-sort="matches"]'),
     kd: document.querySelector('th[data-sort="kd"]'),
@@ -125,7 +164,7 @@ function applyStatVisibility() {
   if (ths.wins) ths.wins.style.display = v.wins ? '' : 'none';
   if (ths.rank) ths.rank.style.display = v.rank ? '' : 'none';
 
-  // Leaderboard rows
+  // leaderboard rows
   document.querySelectorAll('#leaderboard tbody tr').forEach(tr => {
     const map = {
       matches: tr.querySelector('.matches'),
@@ -150,7 +189,7 @@ function renderRoster() {
     const scope = m.scope || 'overall';
     card.innerHTML = `
       <div class="player-header">
-        <img class="player-avatar" src="${m.avatar}" alt="${m.nickname}">
+        <img class="player-avatar" src="${m.avatar || 'assets/avatar-fallback.svg'}" onerror="this.src='assets/avatar-fallback.svg'" alt="${m.nickname}">
         <div>
           <div class="player-nick">${m.nickname}</div>
           <div class="muted">${m.pubgId}</div>
@@ -177,9 +216,12 @@ function renderRoster() {
     `;
     const toggle = card.querySelector('.toggle');
     const expand = card.querySelector('.player-expand');
-    toggle.addEventListener('click', () => {
+    toggle.addEventListener('click', async () => {
       expand.classList.toggle('open');
       toggle.textContent = expand.classList.contains('open') ? 'Hide Stats' : 'View Stats';
+      if (expand.classList.contains('open') && m.pubgId && !m._seasonLoaded) {
+        try { showSpinner(); const stats = await fetchPubgSeasonStats(m.pubgId); m.stats.matches = stats.overall.matches; m.stats.wins = stats.overall.wins; m.stats.kd = stats.overall.kd; m.stats.damage = stats.overall.adr; m._seasonLoaded = true; card.querySelector('.matches-played').textContent = m.stats.matches || 0; card.querySelector('.wins').textContent = m.stats.wins || 0; card.querySelector('.kd-ratio').textContent = m.stats.kd || 0; card.querySelector('.total-damage').textContent = m.stats.damage || 0; renderLeaderboard(); toast('PUBG stats updated', 'ok'); } catch(e){ console.warn('PUBG stats failed', e); toast('PUBG stats failed'); } finally { hideSpinner(); } }
+
     });
     const scopeSel = card.querySelector('.scope-select');
     scopeSel.addEventListener('change', () => {
