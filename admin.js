@@ -55,9 +55,14 @@ function paintMembers() {
   members.forEach((m, idx) => {
     const item = document.createElement('div');
     item.className = 'list-item';
+    const stat = m.stats || {};
     item.innerHTML = `
-      <div><strong>${m.nickname}</strong> <span class="muted">(${m.pubgId||'-'})</span></div>
+      <div>
+        <strong>${m.nickname}</strong> <span class="muted">(${m.pubgId||'-'})</span>
+        <span class="muted"> | M:${stat.matches ?? 0} W:${stat.wins ?? 0} KD:${stat.kd ?? 0}</span>
+      </div>
       <div class="actions">
+        <button class="btn btn-sm" data-refresh="${idx}">Refresh</button>
         <button class="btn btn-sm" data-edit="${idx}">Edit</button>
         <button class="btn btn-sm" data-del="${idx}">Delete</button>
       </div>
@@ -109,11 +114,30 @@ function bindMembers() {
   $('#membersList').addEventListener('click', async (e) => {
     const editIdx = e.target.getAttribute('data-edit');
     const delIdx = e.target.getAttribute('data-del');
+    const refIdx = e.target.getAttribute('data-refresh');
     if (editIdx !== null) openMemberModal(+editIdx);
     if (delIdx !== null) {
       const m = members[+delIdx];
       const res = await fetch(`/api/members/${encodeURIComponent(m.id)}`, withAuth({ method: 'DELETE' }));
       if (res.status === 401) return alert('Unauthorized');
+      await loadAll();
+    }
+    if (refIdx !== null) {
+      const m = members[+refIdx];
+      const btn = e.target;
+      const old = btn.textContent;
+      btn.textContent = 'Refreshing...'; btn.disabled = true;
+      try {
+        const res = await fetch(`/api/members/${encodeURIComponent(m.id)}/refresh-pubg`, withAuth({ method: 'POST' }));
+        if (res.status === 401) return alert('Unauthorized');
+        if (!res.ok) {
+          let det = '';
+          try { const j = await res.json(); det = j && j.error ? j.error : ''; } catch {}
+          alert('Refresh failed: ' + (det || res.status));
+        }
+      } finally {
+        btn.textContent = old; btn.disabled = false;
+      }
       await loadAll();
     }
   });

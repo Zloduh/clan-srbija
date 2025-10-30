@@ -13,6 +13,8 @@ const ADMIN_TOKEN = (process.env.ADMIN_TOKEN || process.env.ADMIN_BEARER || proc
 const SERVER_TOKEN = process.env.SERVER_TOKEN || '';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
+const PUBG_API_KEY = (process.env.PUBG_API_KEY || '').trim();
+const PUBG_PLATFORM = (process.env.PUBG_PLATFORM || 'steam').trim();
 
 const { Pool } = pkg;
 const pool = DATABASE_URL
@@ -413,13 +415,96 @@ function mountRoutes(prefix = '') {
     }
   });
 
-  // Optional PUBG placeholder
-  app.get(`${prefix}/pubg/:playerId`, async (req, res) => {
-    const { playerId } = req.params;
-    const hasKey = !!process.env.PUBG_API_KEY;
-    // Placeholder normalization; integrate real PUBG API if desired.
-    const sample = { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 };
-    res.json({ ...sample, raw: hasKey ? { note: 'Integrate PUBG API here' } : null, playerId });
+  // PUBG integration
+  const isAccountId = (v) => typeof v === 'string' && /^account\./.test(v);
+  const pubgHeaders = () => ({
+    'Authorization': `Bearer ${PUBG_API_KEY}`,
+    'Accept': 'application/vnd.api+json',
+  });
+  const pubgFetch = (path) => fetchJson(`https://api.pubg.com${path}`, { headers: pubgHeaders() }, 12000);
+
+  async function resolveAccountId(nameOrId) {
+    const v = (nameOrId || '').trim();
+    if (!v) return '';
+    if (isAccountId(v)) return v;
+    const data = await pubgFetch(`/shards/${PUBG_PLATFORM}/players?filter[playerNames]=${encodeURIComponent(v)}`);
+    const first = data && data.data && data.data[0];
+    return first ? first.id : '';
+  }
+
+  function sumStats(gameModeStats) {
+    const modes = Object.values(gameModeStats || {});
+    const acc = { matches: 0, wins: 0, kills: 0, deaths: 0, damage: 0 };
+    for (const m of modes) {
+      acc.matches += (m.roundsPlayed || 0);
+      acc.wins += (m.wins || 0);
+      acc.kills += (m.kills || 0);
+      acc.deaths += (m.losses !== undefined ? m.losses : (m.roundsPlayed || 0) - (m.wins || 0));
+      acc.damage += (m.damageDealt || 0);
+    }
+    const kd = acc.deaths > 0 ? +(acc.kills / acc.deaths).toFixed(2) : acc.kills;
+    return { matches: acc.matches, wins: acc.wins, kd, rank: '-', damage: Math.round(acc.damage) };
+  }
+
+  async function fetchLifetimeStats(accountId) {
+    const d = await pubgFetch(`/shards/${PUBG_PLATFORM}/players/${accountId}/seasons/lifetime`);
+    const gms = d && d.data && d.data.attributes && d.data.attributes.gameModeStats;
+    return sumStats(gms || {});
+  }
+
+  // Admin-triggered refresh by member id
+  app.post(`${prefix}/members/:id/refresh-pubg`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
+    if (!PUBG_API_KEY) return res.status(501).json({ error: 'pubg_api_key_missing' });
+    const mid = req.params.id;
+    try {
+      // Load existing member
+      let member;
+      if (hasDb()) {
+        const r = await pool.query('SELECT id, nickname, avatar, pubg_id AS "pubgId", stats, scope FROM members WHERE id = $1', [mid]);
+        member = r.rows[0];
+      } else {
+        member = mem.members.find(m => m.id === mid);
+      }
+      if (!member) return res.status(404).json({ error: 'member_not_found' });
+      // Resolve account id if needed
+      let accountId = '';
+      if (member.pubgId && isAccountId(member.pubgId)) accountId = member.pubgId;
+      if (!accountId) accountId = await resolveAccountId(member.pubgId || member.nickname);
+      if (!accountId) return res.status(404).json({ error: 'pubg_id_not_found' });
+      // Fetch lifetime stats
+      const stats = await fetchLifetimeStats(accountId);
+      // Persist
+      if (hasDb()) {
+        const q = 'UPDATE members SET pubg_id = $1, stats = $2 WHERE id = $3 RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope';
+        const r = await pool.query(q, [accountId, stats, mid]);
+        return res.json(r.rows[0]);
+      } else {
+        member.pubgId = accountId; member.stats = stats;
+        return res.json(member);
+      }
+    } catch (e) {
+      const m = /HTTP\s(\d+)/.exec(String(e));
+      const code = m ? m[1] : '500';
+      return res.status(502).json({ error: 'pubg_fetch_failed', code: String(code) });
+    }
+  });
+
+  // Convenience lookups
+  app.get(`${prefix}/pubg/resolve`, async (req, res) => {
+    if (!PUBG_API_KEY) return res.status(501).json({ error: 'pubg_api_key_missing' });
+    const q = (req.query.q || '').toString();
+    try {
+      const id = await resolveAccountId(q);
+      res.json({ accountId: id });
+    } catch (e) { res.status(502).json({ error: 'resolve_failed' }); }
+  });
+  app.get(`${prefix}/pubg/:accountId/lifetime`, async (req, res) => {
+    if (!PUBG_API_KEY) return res.status(501).json({ error: 'pubg_api_key_missing' });
+    const accountId = req.params.accountId;
+    try {
+      const stats = await fetchLifetimeStats(accountId);
+      res.json({ accountId, stats });
+    } catch (e) { res.status(502).json({ error: 'pubg_fetch_failed' }); }
   });
 }
 
