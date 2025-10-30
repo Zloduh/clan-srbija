@@ -20,6 +20,7 @@ app.use(express.json({ limit: '1mb' }));
 const db = {
   members: [],
   news: [],
+  ytChannels: [],
 };
 
 // Middleware helpers
@@ -66,8 +67,8 @@ async function fetchText(url, init = {}, timeoutMs = 8000) {
 // Basic health
 function mountRoutes(prefix = '') {
   // Health
-  app.get(`${prefix}/health`, (_req, res) => res.json({ ok: true }));
-  app.get(`${prefix}/status`, (_req, res) => res.json({ ok: true }));
+  app.get(`${prefix}/health`, (_req, res) => res.json({ ok: true, message: 'SRBIJA Clan server is online' }));
+  app.get(`${prefix}/status`, (_req, res) => res.json({ ok: true, message: 'SRBIJA Clan server is online' }));
 
   // Auth check
   app.get(`${prefix}/auth/check`, (req, res) => {
@@ -152,6 +153,31 @@ function mountRoutes(prefix = '') {
     } catch (e) {
       res.status(502).json({ error: 'youtube_oembed_failed', detail: String(e) });
     }
+  });
+
+  // YouTube admin (minimal in-memory)
+  app.get(`${prefix}/youtube/channels`, requireAdmin, (_req, res) => {
+    res.json(db.ytChannels);
+  });
+  app.post(`${prefix}/youtube/channels`, requireAdmin, (req, res) => {
+    const { urlOrId, title } = req.body || {};
+    if (!urlOrId) return res.status(400).json({ error: 'urlOrId required' });
+    const id = urlOrId.trim();
+    const existing = db.ytChannels.find(c => c.id === id);
+    const ch = { id, url: urlOrId, title: title || '' };
+    if (existing) Object.assign(existing, ch); else db.ytChannels.push(ch);
+    res.status(existing ? 200 : 201).json(ch);
+  });
+  app.delete(`${prefix}/youtube/channels/:id`, requireAdmin, (req, res) => {
+    const { id } = req.params;
+    const idx = db.ytChannels.findIndex(c => c.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'not_found' });
+    db.ytChannels.splice(idx, 1);
+    res.sendStatus(204);
+  });
+  app.post(`${prefix}/news/sync-youtube`, requireAdmin, (_req, res) => {
+    // Placeholder: integrate YT API to fetch latest and push into db.news
+    res.sendStatus(202);
   });
 
   app.get(`${prefix}/twitch/oembed`, async (req, res) => {

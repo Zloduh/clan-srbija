@@ -1,6 +1,7 @@
 // SRBIJA Admin - dedicated admin page logic
 
 let adminBearer = '';
+let adminServerToken = '';
 let members = [];
 let newsItems = [];
 
@@ -10,6 +11,7 @@ const $$ = sel => document.querySelectorAll(sel);
 function withAuth(init = {}) {
   const headers = new Headers(init.headers || {});
   if (adminBearer) headers.set('Authorization', 'Bearer ' + adminBearer);
+  if (adminServerToken) headers.set('x-server-token', adminServerToken);
   return { ...init, headers };
 }
 
@@ -182,18 +184,26 @@ function bindNews() {
 function initAuth() {
   const saved = sessionStorage.getItem('srbija_admin_token');
   if (saved) adminBearer = saved;
+  const savedSrv = sessionStorage.getItem('srbija_server_token');
+  if (savedSrv) adminServerToken = savedSrv;
 
   $('#adminLoginBtn').addEventListener('click', async () => {
     const token = $('#adminToken').value.trim();
+    const serverToken = ($('#serverToken')?.value || '').trim();
     if (!token) { alert('Enter token'); return; }
     adminBearer = token;
+    adminServerToken = serverToken;
     const ok = await authCheck();
     if (ok) {
       sessionStorage.setItem('srbija_admin_token', adminBearer);
+      if (adminServerToken) sessionStorage.setItem('srbija_server_token', adminServerToken); else sessionStorage.removeItem('srbija_server_token');
+      // Keep compatibility with adminAuthHeader() helper
+      try { localStorage.setItem('ADMIN_API_TOKEN', adminBearer); } catch {}
       showDashboard();
       await loadAll();
     } else {
       adminBearer = '';
+      adminServerToken = '';
       alert('Invalid token');
     }
   });
@@ -201,6 +211,9 @@ function initAuth() {
   $('#adminLogout').addEventListener('click', () => {
     adminBearer = '';
     sessionStorage.removeItem('srbija_admin_token');
+    adminServerToken = '';
+    sessionStorage.removeItem('srbija_server_token');
+    try { localStorage.removeItem('ADMIN_API_TOKEN'); } catch {}
     showLogin();
   });
 
