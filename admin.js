@@ -35,9 +35,16 @@ function showDashboard() {
 }
 
 async function loadAll() {
-  const [nr, mr] = await Promise.all([ fetch('/api/news'), fetch('/api/members') ]);
-  newsItems = await nr.json();
-  members = await mr.json();
+  try {
+    const [nr, mr] = await Promise.all([ fetch('/api/news'), fetch('/api/members') ]);
+    const newsOk = nr.ok; const membersOk = mr.ok;
+    newsItems = newsOk ? (await nr.json()) : [];
+    members = membersOk ? (await mr.json()) : [];
+    if (!newsOk || !membersOk) console.warn('loadAll: some endpoints failed', { newsOk, membersOk });
+  } catch (e) {
+    console.warn('loadAll failed', e);
+    newsItems = []; members = [];
+  }
   paintMembers();
   paintNews();
 }
@@ -161,8 +168,19 @@ function bindNews() {
     } catch {}
     if (!title) title = source === 'youtube' && url ? 'YouTube Post' : (source === 'twitch' && url ? 'Twitch Post' : 'Clan Update');
     if (!thumb) thumb = 'https://picsum.photos/800/450';
-    const res = await fetch('/api/news', withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, desc, thumb, source, url }) }));
-    if (res.status === 401) return alert('Unauthorized');
+    try {
+      const res = await fetch('/api/news', withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, desc, thumb, source, url }) }));
+      if (res.status === 401) return alert('Unauthorized');
+      if (!res.ok) {
+        let detail = '';
+        try { const j = await res.json(); detail = j && j.error ? j.error : ''; } catch {}
+        alert('Add failed: ' + (detail || res.status));
+        return;
+      }
+    } catch (e) {
+      alert('Network error while adding news');
+      return;
+    }
     $('#postUrl').value=''; $('#postTitle').value=''; $('#postThumb').value='';
     await loadAll();
   });

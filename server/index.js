@@ -61,6 +61,13 @@ async function dbInit() {
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS news_url_unique ON news (url)`);
 }
 await dbInit().catch(err => console.error('db init failed', err));
+try {
+  if (hasDb()) {
+    await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS news_url_unique ON news (url) WHERE url IS NOT NULL AND url <> ''");
+  }
+} catch (e) {
+  console.error('index ensure failed', e);
+}
 
 // Middleware helpers
 function getBearer(req) {
@@ -125,8 +132,10 @@ function mountRoutes(prefix = '') {
   // Members
   app.get(`${prefix}/members`, async (_req, res) => {
     if (!hasDb()) return res.json(mem.members);
-    const r = await pool.query('SELECT id, nickname, avatar, pubg_id AS "pubgId", stats, scope FROM members ORDER BY nickname ASC');
-    res.json(r.rows);
+    try {
+      const r = await pool.query('SELECT id, nickname, avatar, pubg_id AS "pubgId", stats, scope FROM members ORDER BY nickname ASC');
+      res.json(r.rows);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   app.post(`${prefix}/members`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
@@ -144,9 +153,11 @@ function mountRoutes(prefix = '') {
       mem.members.push(m);
       return res.status(201).json(m);
     }
-    const q = 'INSERT INTO members (id, nickname, avatar, pubg_id, stats, scope) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope';
-    const r = await pool.query(q, [m.id, m.nickname, m.avatar, m.pubgId, m.stats, m.scope]);
-    res.status(201).json(r.rows[0]);
+    try {
+      const q = 'INSERT INTO members (id, nickname, avatar, pubg_id, stats, scope) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope';
+      const r = await pool.query(q, [m.id, m.nickname, m.avatar, m.pubgId, m.stats, m.scope]);
+      res.status(201).json(r.rows[0]);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   app.put(`${prefix}/members/:id`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
@@ -167,10 +178,12 @@ function mountRoutes(prefix = '') {
     }
     if (!fields.length) return res.status(400).json({ error: 'no_fields' });
     values.push(id);
-    const q = `UPDATE members SET ${fields.join(', ')} WHERE id = $${i} RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope`;
-    const r = await pool.query(q, values);
-    if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
-    res.json(r.rows[0]);
+    try {
+      const q = `UPDATE members SET ${fields.join(', ')} WHERE id = $${i} RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope`;
+      const r = await pool.query(q, values);
+      if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
+      res.json(r.rows[0]);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   app.delete(`${prefix}/members/:id`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
@@ -181,16 +194,20 @@ function mountRoutes(prefix = '') {
       mem.members.splice(idx, 1);
       return res.sendStatus(204);
     }
-    const r = await pool.query('DELETE FROM members WHERE id = $1', [id]);
-    if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
-    res.sendStatus(204);
+    try {
+      const r = await pool.query('DELETE FROM members WHERE id = $1', [id]);
+      if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
+      res.sendStatus(204);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   // News
   app.get(`${prefix}/news`, async (_req, res) => {
     if (!hasDb()) return res.json(mem.news);
-    const r = await pool.query('SELECT id, title, description AS "desc", thumb, source, url FROM news ORDER BY id DESC LIMIT 100');
-    res.json(r.rows);
+    try {
+      const r = await pool.query('SELECT id, title, description AS "desc", thumb, source, url FROM news ORDER BY id DESC LIMIT 100');
+      res.json(r.rows);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   app.post(`${prefix}/news`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
@@ -201,9 +218,12 @@ function mountRoutes(prefix = '') {
       mem.news.unshift(n);
       return res.status(201).json(n);
     }
-    const q = 'INSERT INTO news (title, description, thumb, source, url) VALUES ($1,$2,$3,$4,$5) RETURNING id, title, description AS "desc", thumb, source, url';
-    const r = await pool.query(q, [title, desc || '', thumb || '', source || 'discord', url || '']);
-    res.status(201).json(r.rows[0]);
+    try {
+      const safeUrl = (url && url.trim()) ? url.trim() : null;
+      const q = 'INSERT INTO news (title, description, thumb, source, url) VALUES ($1,$2,$3,$4,$5) RETURNING id, title, description AS "desc", thumb, source, url';
+      const r = await pool.query(q, [title, desc || '', thumb || '', source || 'discord', safeUrl]);
+      res.status(201).json(r.rows[0]);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   app.put(`${prefix}/news/:id`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
@@ -219,14 +239,23 @@ function mountRoutes(prefix = '') {
     let i = 1;
     const map = { title: 'title', desc: 'description', thumb: 'thumb', source: 'source', url: 'url' };
     for (const k of Object.keys(map)) {
-      if (req.body[k] !== undefined) { fields.push(`${map[k]} = $${i++}`); values.push(req.body[k]); }
+      if (req.body[k] !== undefined) {
+        if (k === 'url') {
+          const v = (req.body[k] && req.body[k].trim()) ? req.body[k].trim() : null;
+          fields.push(`${map[k]} = $${i++}`); values.push(v);
+        } else {
+          fields.push(`${map[k]} = $${i++}`); values.push(req.body[k]);
+        }
+      }
     }
     if (!fields.length) return res.status(400).json({ error: 'no_fields' });
     values.push(id);
     const q = `UPDATE news SET ${fields.join(', ')} WHERE id = $${i} RETURNING id, title, description AS "desc", thumb, source, url`;
-    const r = await pool.query(q, values);
-    if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
-    res.json(r.rows[0]);
+    try {
+      const r = await pool.query(q, values);
+      if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
+      res.json(r.rows[0]);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   app.delete(`${prefix}/news/:id`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
@@ -237,9 +266,11 @@ function mountRoutes(prefix = '') {
       mem.news.splice(idx, 1);
       return res.sendStatus(204);
     }
-    const r = await pool.query('DELETE FROM news WHERE id = $1', [id]);
-    if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
-    res.sendStatus(204);
+    try {
+      const r = await pool.query('DELETE FROM news WHERE id = $1', [id]);
+      if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
+      res.sendStatus(204);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   // oEmbed helpers
@@ -258,8 +289,10 @@ function mountRoutes(prefix = '') {
   // YouTube admin (DB-backed, fallback to memory)
   app.get(`${prefix}/youtube/channels`, requireAdmin, async (_req, res) => {
     if (!hasDb()) return res.json(mem.ytChannels);
-    const r = await pool.query('SELECT id, title, url, auto_publish FROM youtube_channels ORDER BY title NULLS LAST, id');
-    res.json(r.rows);
+    try {
+      const r = await pool.query('SELECT id, title, url, auto_publish FROM youtube_channels ORDER BY title NULLS LAST, id');
+      res.json(r.rows);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
   app.post(`${prefix}/youtube/channels`, requireAdmin, async (req, res) => {
     const { urlOrId, title } = req.body || {};
@@ -271,11 +304,13 @@ function mountRoutes(prefix = '') {
       if (existing) Object.assign(existing, ch); else mem.ytChannels.push(ch);
       return res.status(existing ? 200 : 201).json(ch);
     }
-    const q = `INSERT INTO youtube_channels (id, title, url) VALUES ($1,$2,$3)
-               ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, url = EXCLUDED.url
-               RETURNING id, title, url, auto_publish`;
-    const r = await pool.query(q, [ch.id, ch.title, ch.url]);
-    res.status(201).json(r.rows[0]);
+    try {
+      const q = `INSERT INTO youtube_channels (id, title, url) VALUES ($1,$2,$3)
+                 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, url = EXCLUDED.url
+                 RETURNING id, title, url, auto_publish`;
+      const r = await pool.query(q, [ch.id, ch.title, ch.url]);
+      res.status(201).json(r.rows[0]);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
   app.delete(`${prefix}/youtube/channels/:id`, requireAdmin, async (req, res) => {
     const { id } = req.params;
@@ -285,9 +320,11 @@ function mountRoutes(prefix = '') {
       mem.ytChannels.splice(idx, 1);
       return res.sendStatus(204);
     }
-    const r = await pool.query('DELETE FROM youtube_channels WHERE id = $1', [id]);
-    if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
-    res.sendStatus(204);
+    try {
+      const r = await pool.query('DELETE FROM youtube_channels WHERE id = $1', [id]);
+      if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
+      res.sendStatus(204);
+    } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
   app.post(`${prefix}/news/sync-youtube`, requireAdmin, async (_req, res) => {
     const work = async () => {
