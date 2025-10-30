@@ -7,19 +7,20 @@ Purpose
 Endpoints
 - GET /health -> { ok: true }
 - GET /youtube/oembed?url=... -> { title, author_name, thumbnail_url, url }
-  - Requires YOUTUBE_API_KEY
+  - Uses public oEmbed; API key not required.
 - GET /twitch/oembed?url=... -> { title, author_name, thumbnail_url, url }
-  - Requires TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET
+  - Uses public oEmbed; no credentials required.
 - GET /discord/resolve?url=... -> { title, description, thumbnail, url }
   - Public OG scraping only
 - GET /pubg/:playerId -> { matches, wins, kd, rank, damage, raw }
-  - Requires PUBG_API_KEY, optional PUBG_PLATFORM (steam/xbox/psn/etc.)
+  - Placeholder unless PUBG_API_KEY is wired with full integration.
 
 Security
-- Optional SERVER_TOKEN. When set, include header x-server-token in frontend requests.
+- ADMIN_TOKEN required for admin write operations (send as Authorization: Bearer <token>).
+- Optional SERVER_TOKEN. When set, include header x-server-token in frontend/server-to-server requests.
 
 Setup
-1) cp .env.example .env and fill values
+1) cp .env.example .env and fill values (set ADMIN_TOKEN at minimum)
 2) (Docker) docker compose up --build
    (Node) npm install && npm start
 
