@@ -182,8 +182,40 @@ function mountRoutes(prefix = '') {
     res.sendStatus(204);
   });
   app.post(`${prefix}/news/sync-youtube`, requireAdmin, (_req, res) => {
-    // Placeholder: integrate YT API to fetch latest and push into db.news
-    res.sendStatus(202);
+    // Minimal sync: fetch RSS for UC channel IDs only and create news entries
+    (async () => {
+      const existingUrls = new Set(db.news.map(n => n.url).filter(Boolean));
+      let added = 0;
+      for (const ch of db.ytChannels) {
+        const id = (ch.id || ch.url || '').trim();
+        // Extract UC id
+        let uc = '';
+        if (/^UC[\w-]{21,}$/.test(id)) uc = id;
+        const m = id.match(/channel\/(UC[\w-]+)/i); if (!uc && m) uc = m[1];
+        if (!uc) continue; // unsupported format without full API
+        try {
+          const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(uc)}`;
+          const xml = await fetchText(feedUrl, { headers: { 'user-agent': 'Mozilla/5.0 SRBIJA/1.0' } }, 10000);
+          // very naive parse: video entries contain <yt:videoId> and <title>
+          const vidRe = /<entry>[\s\S]*?<yt:videoId>([^<]+)<\/yt:videoId>[\s\S]*?<title>([^<]+)<\/title>/gi;
+          let m2; let count = 0;
+          while ((m2 = vidRe.exec(xml)) && count < 5) {
+            const vid = m2[1];
+            const title = m2[2];
+            const url = `https://www.youtube.com/watch?v=${vid}`;
+            if (!existingUrls.has(url)) {
+              db.news.unshift({ id: String(Date.now()) + Math.random().toString().slice(2,6), title, desc: '', thumb: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`, source: 'youtube', url });
+              existingUrls.add(url);
+              added++;
+            }
+            count++;
+          }
+        } catch (e) {
+          // ignore channel errors
+        }
+      }
+      return { added };
+    })().then(({ added }) => res.status(202).json({ added })).catch(() => res.sendStatus(202));
   });
 
   app.get(`${prefix}/twitch/oembed`, async (req, res) => {
