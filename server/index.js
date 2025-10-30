@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 dotenv.config();
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8787;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || process.env.ADMIN_BEARER || process.env.ADMIN_API_TOKEN || '';
+const ADMIN_TOKEN = (process.env.ADMIN_TOKEN || process.env.ADMIN_BEARER || process.env.ADMIN_API_TOKEN || '').trim();
 const SERVER_TOKEN = process.env.SERVER_TOKEN || '';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
@@ -24,10 +24,16 @@ const db = {
 };
 
 // Middleware helpers
+function getBearer(req) {
+  const auth = (req.get('authorization') || '').trim();
+  const m = auth.match(/^bearer\s+(.+)$/i);
+  return m ? m[1].trim() : '';
+}
+
 function requireAdmin(req, res, next) {
   if (!ADMIN_TOKEN) return res.status(401).json({ error: 'Admin token not configured' });
-  const auth = req.get('authorization') || '';
-  const ok = auth.toLowerCase().startsWith('bearer ') && auth.slice(7) === ADMIN_TOKEN;
+  const token = getBearer(req);
+  const ok = token && token === ADMIN_TOKEN;
   if (!ok) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
@@ -72,8 +78,8 @@ function mountRoutes(prefix = '') {
 
   // Auth check
   app.get(`${prefix}/auth/check`, (req, res) => {
-    const auth = req.get('authorization') || '';
-    const ok = ADMIN_TOKEN && auth.toLowerCase().startsWith('bearer ') && auth.slice(7) === ADMIN_TOKEN;
+    const token = getBearer(req);
+    const ok = !!ADMIN_TOKEN && token === ADMIN_TOKEN;
     return res.sendStatus(ok ? 204 : 401);
   });
 

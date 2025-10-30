@@ -253,15 +253,15 @@ async function ytLoadChannels() {
   items.forEach(ch => {
     const row = document.createElement('div');
     row.className = 'list-item';
-    row.innerHTML = \`
+    row.innerHTML = `
       <div>
-        <div style="font-weight:700">\${ch.title || ch.id}</div>
-        <div class="muted">\${ch.url}</div>
+        <div style="font-weight:700">${ch.title || ch.id}</div>
+        <div class="muted">${ch.url}</div>
       </div>
       <div>
-        <button class="btn" data-del="\${ch.id}">Delete</button>
+        <button class="btn" data-del="${ch.id}">Delete</button>
       </div>
-    \`;
+    `;
     list.appendChild(row);
   });
   list.querySelectorAll('[data-del]').forEach(btn => {
