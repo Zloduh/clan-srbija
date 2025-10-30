@@ -16,8 +16,13 @@ function withAuth(init = {}) {
 }
 
 async function authCheck() {
-  const r = await fetch('/api/auth/check', withAuth());
-  return r.status === 204;
+  try {
+    const r = await fetch('/api/auth/check', withAuth());
+    return r.status === 204;
+  } catch (e) {
+    console.error('Auth check failed', e);
+    return false;
+  }
 }
 
 function showLogin() {
@@ -188,8 +193,9 @@ function initAuth() {
   if (savedSrv) adminServerToken = savedSrv;
 
   $('#adminLoginBtn').addEventListener('click', async () => {
-    const token = $('#adminToken').value.trim();
-    const serverToken = ($('#serverToken')?.value || '').trim();
+    const token = ($('#adminToken') ? $('#adminToken').value.trim() : '');
+    const serverTokenEl = document.getElementById('serverToken');
+    const serverToken = serverTokenEl ? serverTokenEl.value.trim() : '';
     if (!token) { alert('Enter token'); return; }
     adminBearer = token;
     adminServerToken = serverToken;
@@ -269,8 +275,12 @@ async function ytLoadChannels() {
 }
 
 function adminAuthHeader() {
-  const token = localStorage.getItem('ADMIN_API_TOKEN') || '';
-  return { 'Authorization': token ? ('Bearer ' + token) : '' };
+  const token = localStorage.getItem('ADMIN_API_TOKEN') || sessionStorage.getItem('srbija_admin_token') || '';
+  const st = sessionStorage.getItem('srbija_server_token') || '';
+  const h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  if (st) h['x-server-token'] = st;
+  return h;
 }
 
 async function ytAddChannel() {
