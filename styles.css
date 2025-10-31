@@ -27,6 +27,9 @@ body {
   line-height: 1.5;
 }
 
+/* Ensure any [hidden] elements are not displayed */
+[hidden] { display: none !important; }
+
 h1, h2, h3, .brand { font-family: 'Russo One', 'Rajdhani', sans-serif; letter-spacing: 0.5px; }
 
 /* Background image layer */
