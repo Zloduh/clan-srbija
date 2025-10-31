@@ -28,10 +28,12 @@ async function authCheck() {
 function showLogin() {
   $('#adminLogin').hidden = false;
   $('#adminDashboard').hidden = true;
+  const yt = document.getElementById('yt-channels'); if (yt) yt.hidden = true;
 }
 function showDashboard() {
   $('#adminLogin').hidden = true;
   $('#adminDashboard').hidden = false;
+  const yt = document.getElementById('yt-channels'); if (yt) yt.hidden = false;
 }
 
 async function loadAll() {
