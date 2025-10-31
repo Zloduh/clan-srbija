@@ -15,6 +15,7 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 const PUBG_API_KEY = (process.env.PUBG_API_KEY || '').trim();
 const PUBG_PLATFORM = (process.env.PUBG_PLATFORM || 'steam').trim();
+const STEAM_API_KEY = (process.env.STEAM_API_KEY || '').trim();
 
 const { Pool } = pkg;
 const pool = DATABASE_URL
@@ -452,6 +453,18 @@ function mountRoutes(prefix = '') {
     return sumStats(gms || {});
   }
 
+  async function fetchSteamAvatarFromAccountId(accountId) {
+    try {
+      if (!STEAM_API_KEY) return '';
+      if (!/^account\.steam\./.test(accountId)) return '';
+      const steamId = accountId.split('.')?.[2] || '';
+      if (!/^\d{17}$/.test(steamId)) return '';
+      const data = await fetchJson(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${encodeURIComponent(STEAM_API_KEY)}&steamids=${encodeURIComponent(steamId)}`, {}, 10000);
+      const p = data && data.response && data.response.players && data.response.players[0];
+      return (p && (p.avatarfull || p.avatarmedium || p.avatar)) || '';
+    } catch { return ''; }
+  }
+
   // Admin-triggered refresh by member id
   app.post(`${prefix}/members/:id/refresh-pubg`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
     if (!PUBG_API_KEY) return res.status(501).json({ error: 'pubg_api_key_missing' });
@@ -473,13 +486,17 @@ function mountRoutes(prefix = '') {
       if (!accountId) return res.status(404).json({ error: 'pubg_id_not_found' });
       // Fetch lifetime stats
       const stats = await fetchLifetimeStats(accountId);
+      // Try Steam avatar if applicable
+      let newAvatar = '';
+      try { newAvatar = await fetchSteamAvatarFromAccountId(accountId); } catch {}
+      const nextAvatar = newAvatar || member.avatar;
       // Persist
       if (hasDb()) {
-        const q = 'UPDATE members SET pubg_id = $1, stats = $2 WHERE id = $3 RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope';
-        const r = await pool.query(q, [accountId, stats, mid]);
+        const q = 'UPDATE members SET pubg_id = $1, stats = $2, avatar = $3 WHERE id = $4 RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope';
+        const r = await pool.query(q, [accountId, stats, nextAvatar, mid]);
         return res.json(r.rows[0]);
       } else {
-        member.pubgId = accountId; member.stats = stats;
+        member.pubgId = accountId; member.stats = stats; member.avatar = nextAvatar;
         return res.json(member);
       }
     } catch (e) {
