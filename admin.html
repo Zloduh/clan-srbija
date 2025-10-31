@@ -86,20 +86,9 @@
           </div>
         </div>
 
-        <!-- YouTube Channels management (admin only) -->
-        <section class="section" id="yt-channels" hidden>
-          <div class="section-header">
-            <h2 class="title-flag">YouTube Channels</h2>
-            <p class="subtitle">Manage channels for auto-import (runs every 3 hours).</p>
-          </div>
-          <div class="field">
-            <input type="text" id="ytUrl" placeholder="Channel URL or @handle or UCid" />
-            <input type="text" id="ytTitle" placeholder="Display name (optional)" />
-            <button id="ytAdd" class="btn accent">Add / Update</button>
-            <button id="ytSync" class="btn">Sync Now</button>
-          </div>
-          <div id="ytList" class="list"></div>
-        </section>
+        <!-- YouTube Channels management (admin only)
+             Rendered dynamically after successful login to avoid any leakage when cached. -->
+        <div id="yt-channels-anchor"></div>
       </div>
   </main>
 
