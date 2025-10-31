@@ -28,15 +28,12 @@ async function authCheck() {
 function showLogin() {
   $('#adminLogin').hidden = false;
   $('#adminDashboard').hidden = true;
-  const yt = document.getElementById('yt-channels'); if (yt) yt.hidden = true;
   try { document.body.classList.remove('authed'); } catch {}
 }
 function showDashboard() {
   $('#adminLogin').hidden = true;
   $('#adminDashboard').hidden = false;
-  const yt = document.getElementById('yt-channels'); if (yt) yt.hidden = false;
   try { document.body.classList.add('authed'); } catch {}
-  ensureYtSection();
 }
 
 async function loadAll() {
@@ -91,17 +88,6 @@ function paintNews() {
     `;
     wrap.appendChild(item);
   });
-}
-
-function initTabs() {
-  const tabs = $$('.admin-tab');
-  tabs.forEach(tab => tab.addEventListener('click', () => {
-    if (tab.id === 'adminLogout') return; // handled separately
-    tabs.forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    const target = tab.getAttribute('data-tab');
-    $$('.admin-pane').forEach(p => p.hidden = p.id !== target);
-  }));
 }
 
 function bindMembers() {
@@ -281,11 +267,7 @@ function initAuth() {
   }
 }
 
-function initTabsWiring() {
-  initTabs();
-  bindMembers();
-  bindNews();
-}
+function initTabsWiring() { bindMembers(); bindNews(); }
 
 window.addEventListener('DOMContentLoaded', () => {
   initAuth();

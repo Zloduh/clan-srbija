@@ -41,14 +41,9 @@
       </div>
 
       <div id="adminDashboard" class="dashboard" hidden>
-        <div class="admin-tabs">
-          <button class="admin-tab active" data-tab="tab-members">Members</button>
-          <button class="admin-tab" data-tab="tab-news">News</button>
-          <button class="admin-tab" id="adminLogout" style="margin-left:auto">Logout</button>
-        </div>
-        <div class="admin-grid">
-          <div class="card admin-pane" id="tab-members">
-            <h3>Members Management</h3>
+        <div class="admin-grid" style="grid-template-columns:1fr; gap:24px;">
+          <div class="card admin-pane" id="block-members">
+            <div class="section-header"><h3>Members Management</h3></div>
             <div id="membersList" class="list"></div>
             <div class="form-inline">
               <input id="memberNickname" type="text" placeholder="Nickname" />
@@ -65,8 +60,8 @@
             </div>
           </div>
 
-          <div class="card admin-pane" id="tab-news" hidden>
-            <h3>News</h3>
+          <div class="card admin-pane" id="block-news">
+            <div class="section-header"><h3>News</h3></div>
             <div id="adminNewsList" class="list"></div>
             <div class="form-inline">
               <input id="postUrl" type="text" placeholder="Paste link (YouTube/Twitch/Discord) (optional)" />
@@ -81,8 +76,9 @@
             </div>
           </div>
         </div>
-
-        
+        <div style="margin-top:8px; text-align:right;">
+          <button class="btn" id="adminLogout">Logout</button>
+        </div>
       </div>
   </main>
 
