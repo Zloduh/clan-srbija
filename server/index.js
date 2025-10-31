@@ -223,10 +223,29 @@ function mountRoutes(prefix = '') {
     }
     try {
       const safeUrl = (url && url.trim()) ? url.trim() : null;
-      const q = 'INSERT INTO news (title, description, thumb, source, url) VALUES ($1,$2,$3,$4,$5) RETURNING id, title, description AS "desc", thumb, source, url';
+      const q = `
+        INSERT INTO news (title, description, thumb, source, url)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (url) DO UPDATE
+          SET title = EXCLUDED.title,
+              description = EXCLUDED.description,
+              thumb = EXCLUDED.thumb,
+              source = EXCLUDED.source
+        RETURNING id, title, description AS "desc", thumb, source, url`;
       const r = await pool.query(q, [title, desc || '', thumb || '', source || 'discord', safeUrl]);
       res.status(201).json(r.rows[0]);
-    } catch (e) { res.status(500).json({ error: 'db_error' }); }
+    } catch (e) {
+      console.error('POST /news failed', e);
+      // Try to return existing by URL if conflict without RETURNING (older PG)
+      try {
+        const safeUrl = (url && url.trim()) ? url.trim() : null;
+        if (safeUrl) {
+          const r2 = await pool.query('SELECT id, title, description AS "desc", thumb, source, url FROM news WHERE url = $1 LIMIT 1', [safeUrl]);
+          if (r2.rowCount) return res.status(200).json(r2.rows[0]);
+        }
+      } catch {}
+      res.status(500).json({ error: 'db_error' });
+    }
   });
 
   app.put(`${prefix}/news/:id`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
