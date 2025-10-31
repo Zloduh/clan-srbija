@@ -1,6 +1,6 @@
 Overview
 - Root frontend: `index.html` (site), `admin.html` (admin), `styles.css` (theme), `assets/` (icons/images).
-- Admin logic: `admin.js` calls `/api/...` endpoints for auth, members, news, and oEmbed helpers.
+- Admin logic: `admin.js` calls `/api/...` endpoints for auth, members, news, and oEmbed helpers (YouTube/Twitch/Discord). YouTube channel subscriptions/sync were removed — only manual posts.
 - Backend (optional/proxy): `server/` Node/Express service meant to keep API keys secret and normalize 3rd‑party responses for the frontend. Ships with Dockerfile and compose config exposing port 8787.
 
 Responsibilities
@@ -11,9 +11,9 @@ Responsibilities
 - Backend (to implement or provide)
   - Auth: token check for admin actions.
   - Members: CRUD storage (e.g., Postgres, SQLite, or in‑memory for dev).
-  - News: CRUD storage with optional oEmbed enrichment.
-  - oEmbed helpers: YouTube/Twitch lookups with server‑side keys.
-  - Optional PUBG stats normalization endpoint.
+- News: CRUD storage with optional oEmbed enrichment.
+- oEmbed helpers: YouTube/Twitch (public oEmbed) and Discord OG scraping.
+- PUBG stats refresh endpoint (per‑member).
 
 Data Model (expected by the UI)
 - Member
@@ -34,4 +34,3 @@ Data Model (expected by the UI)
 Routing
 - Public site: `/` serves the static files (index, styles, assets).
 - Admin: `/admin` serves `admin.html` and uses `/api` routes for data operations.
-

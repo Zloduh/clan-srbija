@@ -293,67 +293,6 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// ==== YouTube Admin ===
-async function ytLoadChannels() {
-  const res = await fetch('/api/youtube/channels', { headers: adminAuthHeader() });
-  if (!res.ok) { console.warn('Failed to load channels'); return; }
-  const items = await res.json();
-  const list = document.getElementById('ytList');
-  list.innerHTML = '';
-  items.forEach(ch => {
-    const row = document.createElement('div');
-    row.className = 'list-item';
-    row.innerHTML = `
-      <div>
-        <div style="font-weight:700">${ch.title || ch.id}</div>
-        <div class="muted">${ch.url}</div>
-      </div>
-      <div>
-        <button class="btn" data-del="${ch.id}">Delete</button>
-      </div>
-    `;
-    list.appendChild(row);
-  });
-  list.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Delete this channel?')) return;
-      const id = btn.getAttribute('data-del');
-      const del = await fetch('/api/youtube/channels/'+encodeURIComponent(id), { method:'DELETE', headers: adminAuthHeader() });
-      if (del.ok) ytLoadChannels();
-    });
-  });
-}
-
-function adminAuthHeader() {
-  const token = localStorage.getItem('ADMIN_API_TOKEN') || sessionStorage.getItem('srbija_admin_token') || '';
-  const st = sessionStorage.getItem('srbija_server_token') || '';
-  const h = {};
-  if (token) h['Authorization'] = 'Bearer ' + token;
-  if (st) h['x-server-token'] = st;
-  return h;
-}
-
-async function ytAddChannel() {
-  const urlOrId = document.getElementById('ytUrl').value.trim();
-  const title = document.getElementById('ytTitle').value.trim();
-  if (!urlOrId) return alert('Enter channel URL/@handle/UCid');
-  const res = await fetch('/api/youtube/channels', {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json', ...adminAuthHeader() },
-    body: JSON.stringify({ urlOrId, title })
-  });
-  if (!res.ok) { const j = await res.json().catch(()=>({})); alert('Add failed: ' + (j.error||res.status)); return; }
-  document.getElementById('ytUrl').value='';
-  document.getElementById('ytTitle').value='';
-  ytLoadChannels();
-}
-
-async function ytSyncNow() {
-  const res = await fetch('/api/news/sync-youtube', { method:'POST', headers: adminAuthHeader() });
-  if (res.ok) alert('Sync started');
-  else alert('Sync failed');
-}
-
 // ==== YouTube oEmbed autofill for News form ====
 function hookNewsOembed() {
   const urlInput = document.getElementById('newsUrl');
@@ -378,33 +317,4 @@ function hookNewsOembed() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  // YouTube admin UI is created dynamically after login
-  hookNewsOembed();
-});
-
-function ensureYtSection() {
-  if (document.getElementById('yt-channels')) return;
-  const anchor = document.getElementById('yt-channels-anchor') || document.getElementById('adminDashboard');
-  const section = document.createElement('section');
-  section.className = 'section';
-  section.id = 'yt-channels';
-  section.innerHTML = `
-    <div class="section-header">
-      <h2 class="title-flag">YouTube Channels</h2>
-      <p class="subtitle">Manage channels for auto-import (runs every 3 hours).</p>
-    </div>
-    <div class="field">
-      <input type="text" id="ytUrl" placeholder="Channel URL or @handle or UCid" />
-      <input type="text" id="ytTitle" placeholder="Display name (optional)" />
-      <button id="ytAdd" class="btn accent">Add / Update</button>
-      <button id="ytSync" class="btn">Sync Now</button>
-    </div>
-    <div id="ytList" class="list"></div>
-  `;
-  anchor.parentNode.insertBefore(section, anchor.nextSibling);
-  // Bind events and load data
-  document.getElementById('ytAdd').addEventListener('click', ytAddChannel);
-  document.getElementById('ytSync').addEventListener('click', ytSyncNow);
-  ytLoadChannels();
-}
+document.addEventListener('DOMContentLoaded', () => { hookNewsOembed(); });

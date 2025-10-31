@@ -9,11 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css" />
   <link rel="icon" href="/favicon.ico">
-  <style>
-    /* Extra guard: admin-only sections stay hidden until login */
-    #yt-channels{display:none!important}
-    body.authed #yt-channels{display:block!important}
-  </style>
+  
 </head>
 <body>
   <div id="app" class="theme-dark">
@@ -86,9 +82,7 @@
           </div>
         </div>
 
-        <!-- YouTube Channels management (admin only)
-             Rendered dynamically after successful login to avoid any leakage when cached. -->
-        <div id="yt-channels-anchor"></div>
+        
       </div>
   </main>
 

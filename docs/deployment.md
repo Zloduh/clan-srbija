@@ -17,6 +17,7 @@ API Hosting Options
 Environment
 - Set the variables from `server/.env.example` in your hosting environment.
 - Never expose API keys to the frontend; keep them server‑side only.
+- Note: YouTube channel auto‑sync has been removed; only manual news posting remains.
 
 Security
 - Require bearer auth for admin routes.
@@ -26,4 +27,3 @@ Security
 Observability
 - Log request summaries and errors in the API service.
 - Add health checks: `/api/health` should return `{ ok: true }`.
-

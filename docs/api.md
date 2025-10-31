@@ -31,19 +31,22 @@ News
 
 oEmbed Helpers
 - GET `/api/youtube/oembed?url=...`
-  - Requires: `YOUTUBE_API_KEY` in server env
+  - Uses public oEmbed; no API key required
   - Returns: `{ title, author_name, thumbnail_url, url }`
 - GET `/api/twitch/oembed?url=...`
-  - Requires: `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`
+  - Uses public oEmbed
   - Returns: `{ title, author_name, thumbnail_url, url }`
 - GET `/api/discord/resolve?url=...`
   - Public OG scraping only — no secrets
   - Returns: `{ title, description, thumbnail, url }`
 
-PUBG (optional)
+PUBG
 - GET `/api/pubg/:playerId`
   - Requires: `PUBG_API_KEY`, optional `PUBG_PLATFORM`
   - Returns: `{ matches, wins, kd, rank, damage, raw }`
+
+Removed endpoints
+- The app no longer supports YouTube channel subscriptions or RSS sync endpoints.
 
 Headers and Security
 - Admin endpoints require bearer auth: `Authorization: Bearer <ADMIN_TOKEN>`
@@ -54,4 +57,3 @@ Types
   - `{ id: string, nickname: string, avatar: string, pubgId?: string, stats: { matches: number, wins: number, kd: number, rank: string, damage: number }, scope: string }`
 - News
   - `{ id: string, title: string, desc: string, thumb: string, source: string, url?: string }`
-

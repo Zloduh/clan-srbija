@@ -17,10 +17,9 @@ News
 - Edit: update a news item title inline via prompt.
 - Delete: remove the news item.
 
-YouTube Channels (optional section)
-- Manage a list of channels for auto‑import (UI present; backend task scheduling/import not included by default). The `Sync Now` button is a hook for your backend if you implement it.
+YouTube Channels
+- Removed. Only manual news posts are supported.
 
 Implementation Notes
 - Admin uses `/api/news` and `/api/members` endpoints. See `docs/api.md` for request/response shapes.
 - Ensure your backend enforces bearer auth and optionally a server token header on write operations.
-
