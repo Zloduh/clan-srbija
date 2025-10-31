@@ -104,8 +104,9 @@ function bindMembers() {
     const nick = $('#memberNickname').value.trim();
     const avatar = $('#memberAvatar').value.trim() || 'https://i.pravatar.cc/128';
     const pubg = $('#memberPUBGId').value.trim();
+    const platform = ($('#memberPUBGPlatform')?.value || '').trim();
     if (!nick) return alert('Nickname required');
-    const res = await fetch('/api/members', withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: nick, avatar, pubgId: pubg, stats: { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 }, scope: 'overall' }) }));
+    const res = await fetch('/api/members', withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: nick, avatar, pubgId: pubg, pubgPlatform: platform || undefined, stats: { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 }, scope: 'overall' }) }));
     if (res.status === 401) return alert('Unauthorized');
     $('#memberNickname').value=''; $('#memberAvatar').value=''; $('#memberPUBGId').value='';
     await loadAll();
@@ -150,6 +151,7 @@ function openMemberModal(idx) {
   $('#editNickname').value = m.nickname || '';
   $('#editAvatar').value = m.avatar || '';
   $('#editPubgId').value = m.pubgId || '';
+  if ($('#editPubgPlatform')) $('#editPubgPlatform').value = m.pubgPlatform || 'steam';
   modal.hidden = false;
   const cleanup = () => {
     $('#memberSave').onclick = null;
@@ -163,7 +165,8 @@ function openMemberModal(idx) {
     const payload = {
       nickname: $('#editNickname').value.trim() || m.nickname,
       avatar: $('#editAvatar').value.trim() || m.avatar,
-      pubgId: $('#editPubgId').value.trim() || m.pubgId
+      pubgId: $('#editPubgId').value.trim() || m.pubgId,
+      pubgPlatform: ($('#editPubgPlatform')?.value || m.pubgPlatform || '').trim() || undefined
     };
     const res = await fetch(`/api/members/${encodeURIComponent(m.id)}`, withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
     if (res.status === 401) return alert('Unauthorized');

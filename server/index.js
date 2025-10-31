@@ -15,7 +15,9 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 const PUBG_API_KEY = (process.env.PUBG_API_KEY || '').trim();
 const PUBG_PLATFORM = (process.env.PUBG_PLATFORM || 'steam').trim();
+const PUBG_SHARDS = ['steam','kakao','xbox','psn','stadia'];
 const STEAM_API_KEY = (process.env.STEAM_API_KEY || '').trim();
+const YOUTUBE_API_KEY = (process.env.YOUTUBE_API_KEY || '').trim();
 
 const { Pool } = pkg;
 const pool = DATABASE_URL
@@ -43,6 +45,7 @@ async function dbInit() {
       nickname TEXT NOT NULL,
       avatar TEXT,
       pubg_id TEXT,
+      pubg_platform TEXT,
       stats JSONB DEFAULT '{}'::jsonb,
       scope TEXT
     );
@@ -71,6 +74,7 @@ await dbInit().catch(err => console.error('db init failed', err));
 try {
   if (hasDb()) {
     await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS news_url_unique ON news (url) WHERE url IS NOT NULL AND url <> ''");
+    await pool.query("ALTER TABLE members ADD COLUMN IF NOT EXISTS pubg_platform TEXT");
   }
 } catch (e) {
   console.error('index ensure failed', e);
@@ -140,13 +144,13 @@ function mountRoutes(prefix = '') {
   app.get(`${prefix}/members`, async (_req, res) => {
     if (!hasDb()) return res.json(mem.members);
     try {
-      const r = await pool.query('SELECT id, nickname, avatar, pubg_id AS "pubgId", stats, scope FROM members ORDER BY nickname ASC');
+      const r = await pool.query('SELECT id, nickname, avatar, pubg_id AS "pubgId", pubg_platform AS "pubgPlatform", stats, scope FROM members ORDER BY nickname ASC');
       res.json(r.rows);
     } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
 
   app.post(`${prefix}/members`, requireServerTokenIfSet, requireAdmin, async (req, res) => {
-    const { nickname, avatar, pubgId, stats, scope } = req.body || {};
+    const { nickname, avatar, pubgId, pubgPlatform, stats, scope } = req.body || {};
     if (!nickname) return res.status(400).json({ error: 'nickname required' });
     const m = {
       id: randomUUID(),
@@ -154,6 +158,7 @@ function mountRoutes(prefix = '') {
       avatar: avatar || 'https://i.pravatar.cc/128',
       pubgId: pubgId || '',
       stats: stats || { matches: 0, wins: 0, kd: 0, rank: '-', damage: 0 },
+      pubgPlatform: pubgPlatform || null,
       scope: scope || 'overall',
     };
     if (!hasDb()) {
@@ -161,8 +166,8 @@ function mountRoutes(prefix = '') {
       return res.status(201).json(m);
     }
     try {
-      const q = 'INSERT INTO members (id, nickname, avatar, pubg_id, stats, scope) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope';
-      const r = await pool.query(q, [m.id, m.nickname, m.avatar, m.pubgId, m.stats, m.scope]);
+      const q = 'INSERT INTO members (id, nickname, avatar, pubg_id, pubg_platform, stats, scope) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, nickname, avatar, pubg_id AS "pubgId", pubg_platform AS "pubgPlatform", stats, scope';
+      const r = await pool.query(q, [m.id, m.nickname, m.avatar, m.pubgId, m.pubgPlatform, m.stats, m.scope]);
       res.status(201).json(r.rows[0]);
     } catch (e) { res.status(500).json({ error: 'db_error' }); }
   });
@@ -179,7 +184,7 @@ function mountRoutes(prefix = '') {
     const fields = [];
     const values = [];
     let i = 1;
-    const map = { nickname: 'nickname', avatar: 'avatar', pubgId: 'pubg_id', stats: 'stats', scope: 'scope' };
+    const map = { nickname: 'nickname', avatar: 'avatar', pubgId: 'pubg_id', pubgPlatform: 'pubg_platform', stats: 'stats', scope: 'scope' };
     for (const k of Object.keys(map)) {
       if (req.body[k] !== undefined) { fields.push(`${map[k]} = $${i++}`); values.push(req.body[k]); }
     }
@@ -202,7 +207,7 @@ function mountRoutes(prefix = '') {
       return res.sendStatus(204);
     }
     try {
-      const r = await pool.query('DELETE FROM members WHERE id = $1', [id]);
+    const r = await pool.query('DELETE FROM members WHERE id = $1', [id]);
       if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
       res.sendStatus(204);
     } catch (e) { res.status(500).json({ error: 'db_error' }); }
@@ -363,6 +368,40 @@ function mountRoutes(prefix = '') {
       } else {
         channels = mem.ytChannels;
       }
+      // Helpers to resolve to UC id
+      const isUC = (s='') => /^UC[\w-]{21,}$/.test(s);
+      const extractUCFromUrl = (s='') => {
+        const m = s.match(/channel\/(UC[\w-]+)/i); return m ? m[1] : '';
+      };
+      const resolveUC = async (input) => {
+        const raw = (input || '').trim();
+        if (!raw) return '';
+        if (isUC(raw)) return raw;
+        const fromUrl = extractUCFromUrl(raw); if (fromUrl) return fromUrl;
+        if (!YOUTUBE_API_KEY) return '';
+        // @handle
+        if (raw.startsWith('@')) {
+          try {
+            const d = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${encodeURIComponent(raw)}&key=${encodeURIComponent(YOUTUBE_API_KEY)}`, {}, 10000);
+            const ch = d && d.items && d.items[0];
+            return ch ? ch.id : '';
+          } catch {}
+        }
+        // Legacy username
+        try {
+          const d = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?part=id&forUsername=${encodeURIComponent(raw)}&key=${encodeURIComponent(YOUTUBE_API_KEY)}`, {}, 10000);
+          const ch = d && d.items && d.items[0];
+          if (ch && ch.id) return ch.id;
+        } catch {}
+        // Search as last resort
+        try {
+          const d = await fetchJson(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(raw)}&maxResults=1&key=${encodeURIComponent(YOUTUBE_API_KEY)}`, {}, 10000);
+          const it = d && d.items && d.items[0] && d.items[0].snippet;
+          const id = d && d.items && d.items[0] && d.items[0].id && d.items[0].id.channelId;
+          return id || '';
+        } catch {}
+        return '';
+      };
       // Collect existing urls for de-dupe
       let existing = new Set();
       if (hasDb()) {
@@ -374,9 +413,7 @@ function mountRoutes(prefix = '') {
       let added = 0;
       for (const ch of channels) {
         const id = ((ch.id || ch.url) || '').trim();
-        let uc = '';
-        if (/^UC[\w-]{21,}$/.test(id)) uc = id;
-        const m = id.match(/channel\/(UC[\w-]+)/i); if (!uc && m) uc = m[1];
+        const uc = await resolveUC(id);
         if (!uc) continue;
         try {
           const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(uc)}`;
@@ -447,13 +484,14 @@ function mountRoutes(prefix = '') {
     'Authorization': `Bearer ${PUBG_API_KEY}`,
     'Accept': 'application/vnd.api+json',
   });
-  const pubgFetch = (path) => fetchJson(`https://api.pubg.com${path}`, { headers: pubgHeaders() }, 12000);
+  const pubgFetch = (path, platform) => fetchJson(`https://api.pubg.com${path.replace('{platform}', platform)}`, { headers: pubgHeaders() }, 12000);
 
-  async function resolveAccountId(nameOrId) {
+  async function resolveAccountId(nameOrId, platform) {
     const v = (nameOrId || '').trim();
     if (!v) return '';
     if (isAccountId(v)) return v;
-    const data = await pubgFetch(`/shards/${PUBG_PLATFORM}/players?filter[playerNames]=${encodeURIComponent(v)}`);
+    const shard = (platform || PUBG_PLATFORM);
+    const data = await pubgFetch(`/shards/{platform}/players?filter[playerNames]=${encodeURIComponent(v)}`, shard);
     const first = data && data.data && data.data[0];
     return first ? first.id : '';
   }
@@ -472,8 +510,9 @@ function mountRoutes(prefix = '') {
     return { matches: acc.matches, wins: acc.wins, kd, rank: '-', damage: Math.round(acc.damage) };
   }
 
-  async function fetchLifetimeStats(accountId) {
-    const d = await pubgFetch(`/shards/${PUBG_PLATFORM}/players/${accountId}/seasons/lifetime`);
+  async function fetchLifetimeStats(accountId, platform) {
+    const shard = (platform || PUBG_PLATFORM);
+    const d = await pubgFetch(`/shards/{platform}/players/${accountId}/seasons/lifetime`, shard);
     const gms = d && d.data && d.data.attributes && d.data.attributes.gameModeStats;
     return sumStats(gms || {});
   }
@@ -498,7 +537,7 @@ function mountRoutes(prefix = '') {
       // Load existing member
       let member;
       if (hasDb()) {
-        const r = await pool.query('SELECT id, nickname, avatar, pubg_id AS "pubgId", stats, scope FROM members WHERE id = $1', [mid]);
+        const r = await pool.query('SELECT id, nickname, avatar, pubg_id AS "pubgId", pubg_platform AS "pubgPlatform", stats, scope FROM members WHERE id = $1', [mid]);
         member = r.rows[0];
       } else {
         member = mem.members.find(m => m.id === mid);
@@ -507,21 +546,23 @@ function mountRoutes(prefix = '') {
       // Resolve account id if needed
       let accountId = '';
       if (member.pubgId && isAccountId(member.pubgId)) accountId = member.pubgId;
-      if (!accountId) accountId = await resolveAccountId(member.pubgId || member.nickname);
+      let shard = member.pubgPlatform || PUBG_PLATFORM;
+      if (!PUBG_SHARDS.includes(shard)) shard = PUBG_PLATFORM;
+      if (!accountId) accountId = await resolveAccountId(member.pubgId || member.nickname, shard);
       if (!accountId) return res.status(404).json({ error: 'pubg_id_not_found' });
       // Fetch lifetime stats
-      const stats = await fetchLifetimeStats(accountId);
+      const stats = await fetchLifetimeStats(accountId, shard);
       // Try Steam avatar if applicable
       let newAvatar = '';
       try { newAvatar = await fetchSteamAvatarFromAccountId(accountId); } catch {}
       const nextAvatar = newAvatar || member.avatar;
       // Persist
       if (hasDb()) {
-        const q = 'UPDATE members SET pubg_id = $1, stats = $2, avatar = $3 WHERE id = $4 RETURNING id, nickname, avatar, pubg_id AS "pubgId", stats, scope';
-        const r = await pool.query(q, [accountId, stats, nextAvatar, mid]);
+        const q = 'UPDATE members SET pubg_id = $1, pubg_platform = $2, stats = $3, avatar = $4 WHERE id = $5 RETURNING id, nickname, avatar, pubg_id AS "pubgId", pubg_platform AS "pubgPlatform", stats, scope';
+        const r = await pool.query(q, [accountId, shard, stats, nextAvatar, mid]);
         return res.json(r.rows[0]);
       } else {
-        member.pubgId = accountId; member.stats = stats; member.avatar = nextAvatar;
+        member.pubgId = accountId; member.pubgPlatform = shard; member.stats = stats; member.avatar = nextAvatar;
         return res.json(member);
       }
     } catch (e) {

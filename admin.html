@@ -52,7 +52,14 @@
             <div class="form-inline">
               <input id="memberNickname" type="text" placeholder="Nickname" />
               <input id="memberAvatar" type="text" placeholder="Avatar URL" />
-              <input id="memberPUBGId" type="text" placeholder="PUBG ID" />
+              <select id="memberPUBGPlatform">
+                <option value="steam">Steam</option>
+                <option value="kakao">Kakao</option>
+                <option value="xbox">Xbox</option>
+                <option value="psn">PSN</option>
+                <option value="stadia">Stadia</option>
+              </select>
+              <input id="memberPUBGId" type="text" placeholder="PUBG Name or account.*" />
               <button id="addMember" class="btn">Add</button>
             </div>
           </div>
@@ -112,6 +119,16 @@
       <div class="field">
         <span>PUBG ID</span>
         <input type="text" id="editPubgId" />
+      </div>
+      <div class="field">
+        <span>PUBG Platform</span>
+        <select id="editPubgPlatform">
+          <option value="steam">Steam</option>
+          <option value="kakao">Kakao</option>
+          <option value="xbox">Xbox</option>
+          <option value="psn">PSN</option>
+          <option value="stadia">Stadia</option>
+        </select>
       </div>
       <div class="form-inline" style="grid-template-columns:auto auto;">
         <button id="memberSave" class="btn accent">Save</button>
