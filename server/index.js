@@ -29,6 +29,10 @@ app.use(express.json({ limit: '1mb' }));
 // In-memory stores (replace with DB in production)
 const mem = { members: [], news: [], ytChannels: [] };
 
+function newId() {
+  return String(Date.now()) + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+}
+
 const hasDb = () => !!pool;
 
 async function dbInit() {
@@ -223,16 +227,17 @@ function mountRoutes(prefix = '') {
     }
     try {
       const safeUrl = (url && url.trim()) ? url.trim() : null;
+      const idVal = newId();
       const q = `
-        INSERT INTO news (title, description, thumb, source, url)
-        VALUES ($1,$2,$3,$4,$5)
+        INSERT INTO news (id, title, description, thumb, source, url)
+        VALUES ($1,$2,$3,$4,$5,$6)
         ON CONFLICT (url) DO UPDATE
           SET title = EXCLUDED.title,
               description = EXCLUDED.description,
               thumb = EXCLUDED.thumb,
               source = EXCLUDED.source
         RETURNING id, title, description AS "desc", thumb, source, url`;
-      const r = await pool.query(q, [title, desc || '', thumb || '', source || 'discord', safeUrl]);
+      const r = await pool.query(q, [idVal, title, desc || '', thumb || '', source || 'discord', safeUrl]);
       res.status(201).json(r.rows[0]);
     } catch (e) {
       console.error('POST /news failed', e);
@@ -387,7 +392,8 @@ function mountRoutes(prefix = '') {
             if (!hasDb()) {
               mem.news.unshift({ id: randomUUID(), title, desc: '', thumb, source: 'youtube', url });
             } else {
-              await pool.query('INSERT INTO news (title, description, thumb, source, url) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (url) DO NOTHING', [title, '', thumb, 'youtube', url]);
+              const idVal = newId();
+              await pool.query('INSERT INTO news (id, title, description, thumb, source, url) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (url) DO NOTHING', [idVal, title, '', thumb, 'youtube', url]);
             }
             existing.add(url);
             added++;
