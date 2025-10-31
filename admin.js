@@ -29,11 +29,13 @@ function showLogin() {
   $('#adminLogin').hidden = false;
   $('#adminDashboard').hidden = true;
   const yt = document.getElementById('yt-channels'); if (yt) yt.hidden = true;
+  try { document.body.classList.remove('authed'); } catch {}
 }
 function showDashboard() {
   $('#adminLogin').hidden = true;
   $('#adminDashboard').hidden = false;
   const yt = document.getElementById('yt-channels'); if (yt) yt.hidden = false;
+  try { document.body.classList.add('authed'); } catch {}
 }
 
 async function loadAll() {

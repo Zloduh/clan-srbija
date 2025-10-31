@@ -30,6 +30,10 @@ body {
 /* Ensure any [hidden] elements are not displayed */
 [hidden] { display: none !important; }
 
+/* Gate admin-only sections by auth state */
+#yt-channels { display: none; }
+body.authed #yt-channels { display: block; }
+
 h1, h2, h3, .brand { font-family: 'Russo One', 'Rajdhani', sans-serif; letter-spacing: 0.5px; }
 
 /* Background image layer */
